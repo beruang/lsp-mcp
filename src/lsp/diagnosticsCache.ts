@@ -42,3 +42,8 @@ class DiagnosticsCache {
 }
 
 export const diagnosticsCache = new DiagnosticsCache();
+
+export const waitConfig: Record<string, number> = {
+  typescript: 2_000,
+  python: 2_000,
+};

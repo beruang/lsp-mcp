@@ -8,7 +8,7 @@ import { safeResolve } from "../safety/paths.js";
 import { LIMITS, clampResults } from "../safety/limits.js";
 import { ensureOpen } from "../lsp/documentStore.js";
 import { locationFromLsp, hoverToString, fileToUri, referencesFromLsp, documentSymbolsFromLsp, workspaceSymbolsFromLsp, diagnosticSeverityToString } from "../lsp/normalize.js";
-import { diagnosticsCache } from "../lsp/diagnosticsCache.js";
+import { diagnosticsCache, waitConfig } from "../lsp/diagnosticsCache.js";
 import type { NormalizedDiagnostic } from "../lsp/diagnosticsCache.js";
 import { buildDiagnosticsSummary } from "../composite/diagnosticsSummary.js";
 import { validateWorkspaceEdit, countEdits } from "../safety/workspaceEdit.js";
@@ -591,7 +591,7 @@ export function registerAllTools(
         const { uri } = await ensureOpen(client, resolvedPath, lang);
 
         // Wait for diagnostics to arrive
-        await diagnosticsCache.awaitDiagnostics(uri, 2_000);
+        await diagnosticsCache.awaitDiagnostics(uri, waitConfig[lang] ?? 2_000);
         waitedMs = Date.now() - startMs;
 
         let diags = diagnosticsCache.get(uri);
@@ -720,7 +720,7 @@ export function registerAllTools(
         }
 
         const { uri } = await ensureOpen(client, resolvedPath, lang);
-        await diagnosticsCache.awaitDiagnostics(uri, 2_000);
+        await diagnosticsCache.awaitDiagnostics(uri, waitConfig[lang] ?? 2_000);
         diags = diagnosticsCache.get(uri);
       } else if (workspaceWide) {
         const allDiags = diagnosticsCache.all();

@@ -14,7 +14,8 @@
     "e2e:phase-5": "tsx scripts/phase-5-e2e.ts",
     "e2e:phase-6": "tsx scripts/phase-6-e2e.ts",
     "e2e:phase-7": "tsx scripts/phase-7-e2e.ts",
-    "e2e:phase-8": "tsx scripts/phase-8-e2e.ts"
+    "e2e:phase-8": "tsx scripts/phase-8-e2e.ts",
+    "e2e:phase-9": "tsx scripts/phase-9-e2e.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
