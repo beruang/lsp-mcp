@@ -1,2 +1,12 @@
-{"type":"branch","id":"feat/version-1","purpose":"implementation","created":"2026-06-08","base":"fabdb71 (bootstrap commit)","upstream":"origin/main (empty repo)"}
-{"type":"note","text":"Task branches feat/version-1/task/phase-N cannot be created due to git prefix conflict with feat/version-1. Worktrees use detached HEAD at fabdb71 instead."}
+{"type":"branch","id":"feat/version-1","purpose":"integration","created":"2026-06-08","base":"b10e585","upstream":"origin/main (empty)","head":true}
+{"type":"branch","id":"task/phase-1","purpose":"implementation","created":"2026-06-08","base":"feat/version-1"}
+{"type":"branch","id":"task/phase-2","purpose":"implementation","created":"2026-06-08","base":"feat/version-1"}
+{"type":"branch","id":"task/phase-3","purpose":"implementation","created":"2026-06-08","base":"feat/version-1"}
+{"type":"branch","id":"task/phase-4","purpose":"implementation","created":"2026-06-08","base":"feat/version-1"}
+{"type":"branch","id":"task/phase-5","purpose":"implementation","created":"2026-06-08","base":"feat/version-1"}
+{"type":"branch","id":"task/phase-6","purpose":"implementation","created":"2026-06-08","base":"feat/version-1"}
+{"type":"branch","id":"task/phase-7","purpose":"implementation","created":"2026-06-08","base":"feat/version-1"}
+{"type":"branch","id":"task/phase-8","purpose":"implementation","created":"2026-06-08","base":"feat/version-1"}
+{"type":"branch","id":"task/phase-9","purpose":"implementation","created":"2026-06-08","base":"feat/version-1"}
+{"type":"branch","id":"task/phase-10","purpose":"implementation","created":"2026-06-08","base":"feat/version-1"}
+{"type":"note","text":"Branch naming uses task/phase-N (dropped feat/version-1/ prefix to avoid git parent-prefix conflict with the active feat/version-1 branch). User confirmed 2026-06-08."}

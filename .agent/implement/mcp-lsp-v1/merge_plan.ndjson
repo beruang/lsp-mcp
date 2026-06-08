@@ -1,10 +1,10 @@
-{"type":"merge_plan","id":"merge-phase-1","task":"task-phase-1","branch":"feat/version-1/task/phase-1","target":"feat/version-1","depends_on":[],"trigger":"QA passed","order":1}
-{"type":"merge_plan","id":"merge-phase-2","task":"task-phase-2","branch":"feat/version-1/task/phase-2","target":"feat/version-1","depends_on":["merge-phase-1"],"trigger":"QA passed","order":2}
-{"type":"merge_plan","id":"merge-phase-3","task":"task-phase-3","branch":"feat/version-1/task/phase-3","target":"feat/version-1","depends_on":["merge-phase-2"],"trigger":"QA passed","order":3}
-{"type":"merge_plan","id":"merge-phase-4","task":"task-phase-4","branch":"feat/version-1/task/phase-4","target":"feat/version-1","depends_on":["merge-phase-3"],"trigger":"QA passed","order":4}
-{"type":"merge_plan","id":"merge-phase-5","task":"task-phase-5","branch":"feat/version-1/task/phase-5","target":"feat/version-1","depends_on":["merge-phase-4"],"trigger":"QA passed","order":5}
-{"type":"merge_plan","id":"merge-phase-6","task":"task-phase-6","branch":"feat/version-1/task/phase-6","target":"feat/version-1","depends_on":["merge-phase-5"],"trigger":"QA passed","order":6}
-{"type":"merge_plan","id":"merge-phase-7","task":"task-phase-7","branch":"feat/version-1/task/phase-7","target":"feat/version-1","depends_on":["merge-phase-6"],"trigger":"QA passed","order":7}
-{"type":"merge_plan","id":"merge-phase-8","task":"task-phase-8","branch":"feat/version-1/task/phase-8","target":"feat/version-1","depends_on":["merge-phase-7"],"trigger":"QA passed","order":8}
-{"type":"merge_plan","id":"merge-phase-9","task":"task-phase-9","branch":"feat/version-1/task/phase-9","target":"feat/version-1","depends_on":["merge-phase-8"],"trigger":"QA passed","order":9}
-{"type":"merge_plan","id":"merge-phase-10","task":"task-phase-10","branch":"feat/version-1/task/phase-10","target":"feat/version-1","depends_on":["merge-phase-9"],"trigger":"final review passed","order":10}
+{"type":"merge_plan","id":"merge-phase-1","task":"task-phase-1","branch":"task/phase-1","target":"feat/version-1","depends_on":[],"trigger":"QA passed","order":1}
+{"type":"merge_plan","id":"merge-phase-2","task":"task-phase-2","branch":"task/phase-2","target":"feat/version-1","depends_on":["merge-phase-1"],"trigger":"QA passed","order":2}
+{"type":"merge_plan","id":"merge-phase-3","task":"task-phase-3","branch":"task/phase-3","target":"feat/version-1","depends_on":["merge-phase-2"],"trigger":"QA passed","order":3}
+{"type":"merge_plan","id":"merge-phase-4","task":"task-phase-4","branch":"task/phase-4","target":"feat/version-1","depends_on":["merge-phase-3"],"trigger":"QA passed","order":4}
+{"type":"merge_plan","id":"merge-phase-5","task":"task-phase-5","branch":"task/phase-5","target":"feat/version-1","depends_on":["merge-phase-4"],"trigger":"QA passed","order":5}
+{"type":"merge_plan","id":"merge-phase-6","task":"task-phase-6","branch":"task/phase-6","target":"feat/version-1","depends_on":["merge-phase-5"],"trigger":"QA passed","order":6}
+{"type":"merge_plan","id":"merge-phase-7","task":"task-phase-7","branch":"task/phase-7","target":"feat/version-1","depends_on":["merge-phase-6"],"trigger":"QA passed","order":7}
+{"type":"merge_plan","id":"merge-phase-8","task":"task-phase-8","branch":"task/phase-8","target":"feat/version-1","depends_on":["merge-phase-7"],"trigger":"QA passed","order":8}
+{"type":"merge_plan","id":"merge-phase-9","task":"task-phase-9","branch":"task/phase-9","target":"feat/version-1","depends_on":["merge-phase-8"],"trigger":"QA passed","order":9}
+{"type":"merge_plan","id":"merge-phase-10","task":"task-phase-10","branch":"task/phase-10","target":"feat/version-1","depends_on":["merge-phase-9"],"trigger":"final review passed","order":10}

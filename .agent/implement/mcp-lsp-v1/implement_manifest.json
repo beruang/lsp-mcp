@@ -8,14 +8,20 @@
   "spec_index": ".agent/contracts/mcp-lsp-v1/specs.index.ndjson",
   "strategy": "sequential",
   "max_parallel_agents": 1,
-  "max_parallel_agents_user_confirmed": false,
-  "lsp_servers_on_path": false,
-  "missing_lsp_servers": ["typescript-language-server", "pyright-langserver"],
+  "max_parallel_agents_user_confirmed": true,
+  "lsp_servers_on_path": true,
+  "lsp_server_versions": {
+    "typescript-language-server": "5.3.0",
+    "pyright-langserver": "1.1.410"
+  },
+  "missing_lsp_servers": [],
   "git_initialized": true,
   "remote": "https://github.com/beruang/lsp-mcp.git",
   "branch": "feat/version-1",
-  "execution_groups_computed": false,
-  "tasks_computed": false,
+  "task_branch_prefix": "task/phase-",
+  "execution_groups_computed": true,
+  "tasks_computed": true,
   "context_packages_computed": true,
-  "shared_files_clean": true
+  "shared_files_clean": true,
+  "worktree_naming_resolved": true
 }
