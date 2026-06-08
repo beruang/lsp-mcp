@@ -13,6 +13,7 @@ import type { NormalizedDiagnostic } from "../lsp/diagnosticsCache.js";
 import { buildDiagnosticsSummary } from "../composite/diagnosticsSummary.js";
 import { validateWorkspaceEdit, countEdits } from "../safety/workspaceEdit.js";
 import { workspaceEditToDiff } from "../diff/workspaceEditToDiff.js";
+import { inspectSymbol } from "../composite/inspectSymbol.js";
 import { toolError, ErrorCodes } from "./toolErrors.js";
 
 /**
@@ -889,6 +890,80 @@ export function registerAllTools(
       return {
         content: [{ type: "text" as const, text: JSON.stringify(payload, null, 2) }],
       };
+    }
+  );
+
+  // ── lsp_inspect_symbol ──────────────────────────────────────────────────────
+
+  server.tool(
+    "lsp_inspect_symbol",
+    "Return hover, definitions, references, enclosing symbols, and risk hints for a symbol at a position.",
+    {
+      filePath: z.string().describe("Absolute or workspace-relative path to the file."),
+      position: z.object({
+        line: z.number().int().nonnegative().describe("Zero-based line number."),
+        character: z.number().int().nonnegative().describe("Zero-based UTF-16 character offset."),
+      }).describe("Line/character position (zero-based) of the symbol to inspect."),
+      maxReferences: z.number().int().nonnegative().default(50).describe("Maximum number of references to return."),
+    },
+    async (args: { filePath: string; position: { line: number; character: number }; maxReferences?: number }) => {
+      const { filePath, position, maxReferences = 50 } = args;
+      const { workspacePath } = ctx;
+
+      // 1. Validate filePath is inside workspace
+      let resolvedPath: string;
+      try {
+        resolvedPath = await safeResolve(workspacePath, filePath);
+      } catch {
+        return {
+          content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.PATH_OUTSIDE_WORKSPACE, `Path is outside workspace: ${filePath}`), null, 2) }],
+        };
+      }
+
+      // 2. Route extension to language
+      const ext = extname(resolvedPath);
+      const lang = routeLanguage(ext);
+      if (!lang) {
+        return {
+          content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.UNSUPPORTED_LANGUAGE, `No LSP server registered for extension: ${ext}`), null, 2) }],
+        };
+      }
+
+      // 3. Ensure file exists on disk
+      try {
+        await stat(resolvedPath);
+      } catch (err: unknown) {
+        if (err instanceof Error && (err as NodeJS.ErrnoException).code === "ENOENT") {
+          return {
+            content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.FILE_NOT_FOUND, `File not found: ${resolvedPath}`), null, 2) }],
+          };
+        }
+        throw err;
+      }
+
+      // 4. Get or create LSP client
+      const rootUri = fileToUri(workspacePath);
+      const client = await clientManager.getClientForLanguage(lang, { workspacePath, rootUri });
+      if (!client) {
+        return {
+          content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.LSP_SERVER_UNAVAILABLE, `No LSP server available for language: ${lang}`), null, 2) }],
+        };
+      }
+
+      // 5. Ensure document is open
+      const { uri } = await ensureOpen(client, resolvedPath, lang);
+
+      // 6. Run the inspect composite
+      try {
+        const result = await inspectSymbol(client, workspacePath, uri, resolvedPath, position, maxReferences);
+        return {
+          content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
+        };
+      } catch (err: unknown) {
+        return {
+          content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.LSP_REQUEST_FAILED, String(err)), null, 2) }],
+        };
+      }
     }
   );
 
