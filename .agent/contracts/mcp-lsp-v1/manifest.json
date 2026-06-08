@@ -1,0 +1,19 @@
+{
+  "type": "brainstorm_manifest",
+  "project": "mcp-lsp-v1",
+  "status": "approved",
+  "created": "2026-06-08",
+  "human_root": "docs/mcp-lsp-v1",
+  "agent_root": ".agent/contracts/mcp-lsp-v1",
+  "contract": "docs/mcp-lsp-v1/contract.md",
+  "phases": "docs/mcp-lsp-v1/phases.md",
+  "spec_index": "docs/mcp-lsp-v1/spec/spec-index.md",
+  "agent_files": {
+    "contract": ".agent/contracts/mcp-lsp-v1/contract.ndjson",
+    "confidence": ".agent/contracts/mcp-lsp-v1/confidence.ndjson",
+    "phases": ".agent/contracts/mcp-lsp-v1/phases.ndjson",
+    "specs_index": ".agent/contracts/mcp-lsp-v1/specs.index.ndjson",
+    "decisions": ".agent/contracts/mcp-lsp-v1/decisions.ndjson",
+    "risks": ".agent/contracts/mcp-lsp-v1/risks.ndjson"
+  }
+}

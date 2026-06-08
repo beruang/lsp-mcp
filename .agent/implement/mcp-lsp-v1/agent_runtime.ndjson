@@ -1,0 +1,1 @@
+{"type":"agent_runtime","project":"mcp-lsp-v1","max_parallel_agents":1,"active_agents":0,"max_attempts_per_task":3,"lead_role":"lead-engineer","worker_role":"general-purpose","qa_role":"general-purpose","fixer_role":"general-purpose","final_reviewer_role":"general-purpose"}

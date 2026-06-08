@@ -1,0 +1,10 @@
+{"type":"reviewer_gate","id":"gate-phase-1","task":"task-phase-1","requires":["typecheck","build"],"blocks":["task-phase-2"]}
+{"type":"reviewer_gate","id":"gate-phase-2","task":"task-phase-2","requires":["typecheck","build"],"blocks":["task-phase-3"]}
+{"type":"reviewer_gate","id":"gate-phase-3","task":"task-phase-3","requires":["typecheck","build"],"blocks":["task-phase-4"]}
+{"type":"reviewer_gate","id":"gate-phase-4","task":"task-phase-4","requires":["typecheck","build"],"blocks":["task-phase-5"]}
+{"type":"reviewer_gate","id":"gate-phase-5","task":"task-phase-5","requires":["typecheck","build"],"blocks":["task-phase-6"]}
+{"type":"reviewer_gate","id":"gate-phase-6","task":"task-phase-6","requires":["typecheck","build"],"blocks":["task-phase-7"]}
+{"type":"reviewer_gate","id":"gate-phase-7","task":"task-phase-7","requires":["typecheck","build"],"blocks":["task-phase-8"]}
+{"type":"reviewer_gate","id":"gate-phase-8","task":"task-phase-8","requires":["typecheck","build"],"blocks":["task-phase-9"]}
+{"type":"reviewer_gate","id":"gate-phase-9","task":"task-phase-9","requires":["typecheck","build"],"blocks":["task-phase-10"]}
+{"type":"reviewer_gate","id":"gate-phase-10","task":"task-phase-10","requires":["typecheck","build","final-review"],"blocks":[]}

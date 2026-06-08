@@ -1,0 +1,80 @@
+{"type":"contract_meta","project":"mcp-lsp-v1","status":"approved","confidence":96,"created":"2026-06-08","approved_at":"2026-06-08","source":"spec/version-1.md","target_repo":"/Volumes/Workspace/rnd/workflow/mcp/lsp","branch":"feat/version-1"}
+{"type":"problem","summary":"Coding agents exploring large TS and Python projects lose context from repeated reads and greps; a safe read-oriented MCP LSP adapter gives them semantic answers (types, definitions, references, diagnostics) without writing code or knowing LSP internals"}
+{"type":"goal","id":"goal-1","text":"Implement all 10 V1 tools from spec/version-1.md section 8"}
+{"type":"goal","id":"goal-2","text":"Pass all 4 acceptance-criteria groups from section 20 (Health, TypeScript, Python, Safety)"}
+{"type":"goal","id":"goal-3","text":"Provide two concrete sample repos for acceptance testing, one TS one Python"}
+{"type":"goal","id":"goal-4","text":"Produce a review pass that lists proposed spec edits for 3 known gaps, without auto-mutating the spec"}
+{"type":"goal","id":"goal-5","text":"Land the build on a single repo, branch feat/version-1, so V2-V4 can branch off cleanly"}
+{"type":"success_criterion","id":"success-1","text":"Each of the 10 phases has a defined exit test the next phase cannot start until the previous passes"}
+{"type":"success_criterion","id":"success-2","text":"lsp_health_check correctly detects both typescript-language-server and pyright-langserver availability"}
+{"type":"success_criterion","id":"success-3","text":"Each of the 10 read tools returns the spec-defined shape against the concrete sample repos"}
+{"type":"success_criterion","id":"success-4","text":"lsp_rename_preview proves it does not write files (post-call mtime check on the sample repo)"}
+{"type":"success_criterion","id":"success-5","text":"Workspace path allowlist rejects .. traversal, absolute outside paths, and WORKSPACE_PATH itself"}
+{"type":"success_criterion","id":"success-6","text":"All tool responses are pretty JSON inside a single MCP text content block per spec section 17"}
+{"type":"success_criterion","id":"success-7","text":"No file in spec/version-1.md is mutated by an automated pass; review pass produces an edit list only"}
+{"type":"scope_in","id":"scope-in-1","text":"All 10 MCP tools in spec section 8"}
+{"type":"scope_in","id":"scope-in-2","text":"TypeScript and JavaScript via typescript-language-server (.ts .tsx .js .jsx)"}
+{"type":"scope_in","id":"scope-in-3","text":"Python via pyright-langserver (.py)"}
+{"type":"scope_in","id":"scope-in-4","text":"MCP stdio transport"}
+{"type":"scope_in","id":"scope-in-5","text":"Single workspace root via WORKSPACE_PATH env var"}
+{"type":"scope_in","id":"scope-in-6","text":"Path allowlist with workspace-relative response paths and symlink rejection"}
+{"type":"scope_in","id":"scope-in-7","text":"LSP server lazy start, full doc-sync, capability tracking"}
+{"type":"scope_in","id":"scope-in-8","text":"Diagnostics cache populated via textDocument/publishDiagnostics"}
+{"type":"scope_in","id":"scope-in-9","text":"Two concrete sample repos (TS and Python) for acceptance testing"}
+{"type":"scope_in","id":"scope-in-10","text":"Review pass that lists 3 proposed spec edits without auto-mutation"}
+{"type":"scope_in","id":"scope-in-11","text":"Per-version branch convention: feat/version-1 for this build"}
+{"type":"scope_out","id":"scope-out-1","text":"Direct file mutation (per spec section 4)"}
+{"type":"scope_out","id":"scope-out-2","text":"Applying WorkspaceEdits (per spec section 4)"}
+{"type":"scope_out","id":"scope-out-3","text":"Code action execution (per spec section 4)"}
+{"type":"scope_out","id":"scope-out-4","text":"Formatting application (per spec section 4)"}
+{"type":"scope_out","id":"scope-out-5","text":"Call hierarchy, type hierarchy, completion, autocomplete (per spec section 4)"}
+{"type":"scope_out","id":"scope-out-6","text":"Remote workspace and multi-root support (per spec section 4)"}
+{"type":"scope_out","id":"scope-out-7","text":"Custom LSP server implementation and persistent indexing (per spec section 4)"}
+{"type":"scope_out","id":"scope-out-8","text":"All V2+ tools (code actions preview, format preview, signature help, type definition, implementation, call hierarchy, completion, server status, restart server)"}
+{"type":"scope_out","id":"scope-out-9","text":"Building V2, V3, or V4"}
+{"type":"scope_out","id":"scope-out-10","text":"Editing spec/version-2.md, spec/version-3.md, or spec/version-4.md"}
+{"type":"scope_out","id":"scope-out-11","text":"CI integration (deferred to a follow-up contract)"}
+{"type":"constraint","id":"constraint-1","text":"Tool responses: one MCP text content block containing pretty JSON, no prose (spec section 17)"}
+{"type":"constraint","id":"constraint-2","text":"File paths in responses must be workspace-relative; absolute paths rejected; symlinks not followed (spec section 10.1)"}
+{"type":"constraint","id":"constraint-3","text":"Result limits: references 200, workspace symbols 100, diagnostics 500 (spec section 10.3)"}
+{"type":"constraint","id":"constraint-4","text":"Timeouts: hover 3s, definition 5s, references 10s, document symbols 5s, workspace symbols 10s, rename 10s, health check 5s (spec section 10.4)"}
+{"type":"constraint","id":"constraint-5","text":"No raw LSP passthrough tool in V1 (spec section 10.5)"}
+{"type":"constraint","id":"constraint-6","text":"Zod schemas for every tool input (spec section 16)"}
+{"type":"constraint","id":"constraint-7","text":"Capability check before LSP method call; lsp_capability_unsupported if absent (spec section 19)"}
+{"type":"constraint","id":"constraint-8","text":"Single repo at /Volumes/Workspace/rnd/workflow/mcp/lsp; branch feat/version-1"}
+{"type":"constraint","id":"constraint-9","text":"Tech stack: TypeScript, Node.js >= 20, ESM, MCP SDK, zod, vscode-jsonrpc, vscode-languageserver-protocol, vscode-languageserver-types, diff (spec sections 5, 22, 23)"}
+{"type":"constraint","id":"constraint-10","text":"Project layout under src/ matching spec section 14"}
+{"type":"assumption","id":"assumption-1","text":"Local dev environment has Node.js >= 20, pnpm or npm, typescript-language-server and pyright installed globally"}
+{"type":"assumption","id":"assumption-2","text":"The implementer will run git init in the target directory and create the feat/version-1 branch"}
+{"type":"assumption","id":"assumption-3","text":"spec/version-1.md is the source of truth; review pass lists edits but does not mutate the spec; user applies edits manually"}
+{"type":"assumption","id":"assumption-4","text":"An MCP client (e.g., Claude Code or a stdio tester) is available to the implementer for end-to-end testing"}
+{"type":"assumption","id":"assumption-5","text":"Per-version branch convention is feat/version-N; V2 will branch off main using the same pattern"}
+{"type":"assumption","id":"assumption-6","text":"Both sample repos are tiny and self-contained: no node_modules, no network, no transitive deps"}
+{"type":"assumption","id":"assumption-7","text":"pyright-langserver is on PATH (per spec section 7)"}
+{"type":"assumption","id":"assumption-8","text":"typescript-language-server is the standard implementation referenced by the spec"}
+{"type":"assumption","id":"assumption-9","text":"pnpm is preferred; npm is an acceptable fallback (per spec section 5)"}
+{"type":"decision","id":"decision-1","text":"Build V1 as an implementation contract, not a spec edit","reason":"User chose Both: review then plan; review pass is a deliverable but the primary output is the build plan"}
+{"type":"decision","id":"decision-2","text":"Fixtures are concrete sample repos, not abstract shapes","reason":"User chose Concrete sample repos in contract; concrete fixtures make acceptance tests reproducible"}
+{"type":"decision","id":"decision-3","text":"10 phases, one per spec section 25 milestone","reason":"User chose Mirror section 25; clearest mapping; each phase small and independently testable"}
+{"type":"decision","id":"decision-4","text":"Single repo, branch feat/version-1","reason":"User said next we will provide until v4; per-version branching keeps V1 isolated and V2+ additive"}
+{"type":"decision","id":"decision-5","text":"Review pass output is a list of proposed spec edits, not auto-mutation","reason":"User chose List proposed spec edits; keeps planning artifact separate from the spec"}
+{"type":"decision","id":"decision-6","text":"Diagnostics short delay defaults to 2000 ms","reason":"Spec leaves it open; review pass proposes this as the canonical value"}
+{"type":"decision","id":"decision-7","text":"workspaceWide true triggers a one-shot warm-up pass if the cache is empty","reason":"Spec is silent on cold cache; review pass proposes warm-up so the first call returns useful data"}
+{"type":"decision","id":"decision-8","text":"Symlinks pointing outside the workspace are not followed (realpath check)","reason":"Spec safeResolve uses resolve which does not follow symlinks; realpath step closes the hole"}
+{"type":"decision","id":"decision-9","text":"Tool responses are pretty JSON, two-space indent, in a single text content block","reason":"Spec section 17"}
+{"type":"decision","id":"decision-10","text":"lsp_inspect_symbol runs the 4 sub-calls sequentially, shortest timeout first (hover 3s)","reason":"Sub-call order and parallelism unspecified; sequential-first is the safe default"}
+{"type":"decision","id":"decision-11","text":"TypeScript LSP started once per workspace, lazily, on first .ts/.js request; Pyright likewise on first .py request","reason":"Spec section 11 may start language servers lazily plus section 7 routing rules"}
+{"type":"decision","id":"decision-12","text":"The diff library produces unified diffs for lsp_rename_preview","reason":"Spec diff-requirement section recommends diff"}
+{"type":"decision","id":"decision-13","text":"All tool errors follow the ToolError shape from spec section 9.5","reason":"Spec section 18"}
+{"type":"decision","id":"decision-14","text":"feat/version-1 is the only branch in use for this contract; V2+ branch off later","reason":"Per-version branch convention"}
+{"type":"decision","id":"decision-15","text":"No CI in this contract","reason":"Out of scope per scope.md"}
+{"type":"risk","id":"risk-1","text":"TypeScript language server slow startup (10-30s)","severity":"medium","likelihood":"likely","mitigation":"Phase 2 forces initialize + initialized before declaring success; Phase 4 uses a 30s startup timeout outside the per-tool timeout"}
+{"type":"risk","id":"risk-2","text":"Pyright diagnostic flow differs from TypeScript","severity":"medium","likelihood":"possible","mitigation":"Phase 9 includes a fixture-level test that Pyright returns diagnostics within 2s of didOpen"}
+{"type":"risk","id":"risk-3","text":"prepareRename vs rename disagreement","severity":"low","likelihood":"possible","mitigation":"When prepareRename returns null, set canRename false; when rename returns null after prepareRename accepted, surface canRename false with a violations entry"}
+{"type":"risk","id":"risk-4","text":"WorkspaceEdit with many cross-file edits is slow to diff","severity":"low","likelihood":"possible","mitigation":"Cap diff output per file at 200 lines; surface editCount in response"}
+{"type":"risk","id":"risk-5","text":"References can return 10k+ in large repos; truncation to 200 hides the rest","severity":"low","likelihood":"likely","mitigation":"Response includes truncated true, returned, referenceCount totalKnown; V1 explicitly accepts this limit"}
+{"type":"risk","id":"risk-6","text":"Spec ambiguities not surfaced by the review pass","severity":"low","likelihood":"possible","mitigation":"Each phase exit test is source of truth; if spec is ambiguous, implementer pauses and asks"}
+{"type":"risk","id":"risk-7","text":"Language server binary not on PATH","severity":"medium","likelihood":"possible","mitigation":"LspClientManager.spawn checks command -v and throws lsp_server_unavailable with clear message; Phase 2 and 9 include negative-case tests"}
+{"type":"risk","id":"risk-8","text":"Symlink handling: a symlink inside workspace pointing outside could pass the naive check","severity":"low","likelihood":"unlikely","mitigation":"Use realpath on the resolved candidate before the workspace-equality check (decision D8)"}
+{"type":"risk","id":"risk-9","text":"Cross-tool error code inconsistency","severity":"low","likelihood":"possible","mitigation":"A single toolErrors.ts module maps known failure modes to error codes; Phase 1 establishes this module first"}
+{"type":"open_question","id":"oq-1","text":"Should the implementer also include a Vitest or Node test runner setup, or rely on shell-script exit tests per phase?","status":"unresolved","answer":"Unresolved; will be decided in phase-1 spec."}

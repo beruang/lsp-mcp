@@ -1,0 +1,11 @@
+{"type":"branch","id":"feat/version-1","purpose":"implementation","created":"2026-06-08","base":"origin/main (empty repo — no base commit)"}
+{"type":"branch","id":"feat/version-1/task/phase-1","purpose":"task-worktree","created":"2026-06-08","base":"feat/version-1","upstream":"none"}
+{"type":"branch","id":"feat/version-1/task/phase-2","purpose":"task-worktree","created":"2026-06-08","base":"feat/version-1","upstream":"none"}
+{"type":"branch","id":"feat/version-1/task/phase-3","purpose":"task-worktree","created":"2026-06-08","base":"feat/version-1","upstream":"none"}
+{"type":"branch","id":"feat/version-1/task/phase-4","purpose":"task-worktree","created":"2026-06-08","base":"feat/version-1","upstream":"none"}
+{"type":"branch","id":"feat/version-1/task/phase-5","purpose":"task-worktree","created":"2026-06-08","base":"feat/version-1","upstream":"none"}
+{"type":"branch","id":"feat/version-1/task/phase-6","purpose":"task-worktree","created":"2026-06-08","base":"feat/version-1","upstream":"none"}
+{"type":"branch","id":"feat/version-1/task/phase-7","purpose":"task-worktree","created":"2026-06-08","base":"feat/version-1","upstream":"none"}
+{"type":"branch","id":"feat/version-1/task/phase-8","purpose":"task-worktree","created":"2026-06-08","base":"feat/version-1","upstream":"none"}
+{"type":"branch","id":"feat/version-1/task/phase-9","purpose":"task-worktree","created":"2026-06-08","base":"feat/version-1","upstream":"none"}
+{"type":"branch","id":"feat/version-1/task/phase-10","purpose":"task-worktree","created":"2026-06-08","base":"feat/version-1","upstream":"none"}
