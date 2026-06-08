@@ -8,7 +8,8 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "node --test --import tsx src/mcp/toolErrors.test.ts"
+    "test": "node --test --import tsx --test-name-pattern '' src/mcp/toolErrors.test.ts src/utils/asyncTimeout.test.ts",
+    "smoke:phase-2": "tsx scripts/phase-2-smoke.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
