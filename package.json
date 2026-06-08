@@ -10,7 +10,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "node --test --import tsx src/mcp/toolErrors.test.ts src/utils/asyncTimeout.test.ts src/safety/paths.test.ts src/config/languageServers.test.ts src/lsp/normalize.test.ts",
     "smoke:phase-2": "tsx scripts/phase-2-smoke.ts",
-    "e2e:phase-4": "tsx scripts/phase-4-e2e.ts"
+    "e2e:phase-4": "tsx scripts/phase-4-e2e.ts",
+    "e2e:phase-5": "tsx scripts/phase-5-e2e.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
