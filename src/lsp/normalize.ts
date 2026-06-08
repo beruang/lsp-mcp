@@ -1,6 +1,7 @@
 import { pathToFileURL, fileURLToPath } from "node:url";
 import { relative } from "path";
-import { SymbolKind } from "vscode-languageserver-types";
+import { SymbolKind, DiagnosticSeverity } from "vscode-languageserver-types";
+import type { NormalizedDiagnostic } from "./diagnosticsCache.js";
 
 /**
  * Convert an absolute path to a file:// URI string.
@@ -252,6 +253,39 @@ export interface NormalizedWorkspaceSymbol {
   range?: Range;
   containerName?: string;
   language: string;
+}
+
+// ─── diagnosticFromLsp ────────────────────────────────────────────────────────
+
+interface LspDiagnostic {
+  range: Range;
+  severity?: DiagnosticSeverity;
+  code?: string | number;
+  source?: string;
+  message: string;
+}
+
+const SEVERITY_MAP: Record<number, string> = {
+  [DiagnosticSeverity.Error]: "error",
+  [DiagnosticSeverity.Warning]: "warning",
+  [DiagnosticSeverity.Information]: "info",
+  [DiagnosticSeverity.Hint]: "hint",
+};
+
+export function diagnosticSeverityToString(severity?: DiagnosticSeverity): string {
+  if (severity === undefined || severity === null) return "info";
+  return SEVERITY_MAP[severity] ?? "info";
+}
+
+export function diagnosticFromLsp(filePath: string, diag: LspDiagnostic): NormalizedDiagnostic {
+  return {
+    filePath,
+    severity: diagnosticSeverityToString(diag.severity),
+    message: diag.message,
+    source: diag.source,
+    code: diag.code,
+    range: diag.range,
+  };
 }
 
 /**

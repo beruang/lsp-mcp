@@ -1,5 +1,5 @@
-import { stat } from "node:fs/promises";
-import { extname } from "node:path";
+import { stat, readdir } from "node:fs/promises";
+import { extname, join } from "node:path";
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { LspClientManager } from "../lsp/LspClientManager.js";
@@ -7,7 +7,10 @@ import { languageServers, routeLanguage } from "../config/languageServers.js";
 import { safeResolve } from "../safety/paths.js";
 import { LIMITS, clampResults } from "../safety/limits.js";
 import { ensureOpen } from "../lsp/documentStore.js";
-import { locationFromLsp, hoverToString, fileToUri, referencesFromLsp, documentSymbolsFromLsp, workspaceSymbolsFromLsp } from "../lsp/normalize.js";
+import { locationFromLsp, hoverToString, fileToUri, referencesFromLsp, documentSymbolsFromLsp, workspaceSymbolsFromLsp, diagnosticSeverityToString } from "../lsp/normalize.js";
+import { diagnosticsCache } from "../lsp/diagnosticsCache.js";
+import type { NormalizedDiagnostic } from "../lsp/diagnosticsCache.js";
+import { buildDiagnosticsSummary } from "../composite/diagnosticsSummary.js";
 import { toolError, ErrorCodes } from "./toolErrors.js";
 
 /**
@@ -525,6 +528,255 @@ export function registerAllTools(
     }
   );
 
+  // ── lsp_diagnostics ──────────────────────────────────────────────────────────
+
+  server.tool(
+    "lsp_diagnostics",
+    "Return cached diagnostics for a file or the whole workspace. Triggers warm-up if workspaceWide is requested and cache is empty.",
+    {
+      filePath: z.string().optional().describe("Absolute or workspace-relative path to a file."),
+      workspaceWide: z.boolean().default(false).describe("If true, warm the workspace and return diagnostics for all files."),
+      severity: z.enum(["error", "warning", "info", "hint", "all"]).default("all").describe("Filter by severity."),
+      maxResults: z.number().int().nonnegative().default(LIMITS.DIAGNOSTICS_MAX).describe("Maximum number of results to return."),
+    },
+    async (args: { filePath?: string; workspaceWide?: boolean; severity?: string; maxResults?: number }) => {
+      const { filePath, workspaceWide = false, severity = "all", maxResults = LIMITS.DIAGNOSTICS_MAX } = args;
+      const { workspacePath } = ctx;
+
+      const startMs = Date.now();
+      let waitedMs = 0;
+      let warmedUp = false;
+
+      if (filePath) {
+        // Single-file path
+        let resolvedPath: string;
+        try {
+          resolvedPath = await safeResolve(workspacePath, filePath);
+        } catch {
+          return {
+            content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.PATH_OUTSIDE_WORKSPACE, `Path is outside workspace: ${filePath}`), null, 2) }],
+          };
+        }
+
+        const ext = extname(resolvedPath);
+        const lang = routeLanguage(ext);
+        if (!lang) {
+          return {
+            content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.UNSUPPORTED_LANGUAGE, `No LSP server registered for extension: ${ext}`), null, 2) }],
+          };
+        }
+
+        try {
+          await stat(resolvedPath);
+        } catch (err: unknown) {
+          if (err instanceof Error && (err as NodeJS.ErrnoException).code === "ENOENT") {
+            return {
+              content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.FILE_NOT_FOUND, `File not found: ${resolvedPath}`), null, 2) }],
+            };
+          }
+          throw err;
+        }
+
+        const rootUri = fileToUri(workspacePath);
+        const client = await clientManager.getClientForLanguage(lang, { workspacePath, rootUri });
+        if (!client) {
+          return {
+            content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.LSP_SERVER_UNAVAILABLE, `No LSP server available for language: ${lang}`), null, 2) }],
+          };
+        }
+
+        const { uri } = await ensureOpen(client, resolvedPath, lang);
+
+        // Wait for diagnostics to arrive
+        await diagnosticsCache.awaitDiagnostics(uri, 2_000);
+        waitedMs = Date.now() - startMs;
+
+        let diags = diagnosticsCache.get(uri);
+        if (severity !== "all") {
+          diags = diags.filter((d) => d.severity === severity);
+        }
+        const { items, truncated, returned } = clampResults(diags, maxResults);
+
+        return {
+          content: [{ type: "text" as const, text: JSON.stringify({ diagnostics: items, returned, truncated, waitedMs }, null, 2) }],
+        };
+      }
+
+      // workspaceWide or all
+      if (workspaceWide) {
+        const allDiags = diagnosticsCache.all();
+        if (allDiags.length === 0) {
+          warmedUp = true;
+          // Walk workspace and didOpen all source files
+          const extSet = new Set<string>();
+          for (const entry of Object.values(languageServers)) {
+            for (const e of entry.extensions) extSet.add(e);
+          }
+
+          const rootUri = fileToUri(workspacePath);
+          try {
+            const files = await walkSourceFiles(workspacePath, extSet);
+            for (const f of files) {
+              const e = extname(f);
+              const l = routeLanguage(e);
+              if (!l) continue;
+              try {
+                const c = await clientManager.getClientForLanguage(l, { workspacePath, rootUri });
+                if (c) await ensureOpen(c, f, l);
+              } catch {
+                // skip files that fail to open
+              }
+            }
+          } catch {
+            // walk may fail if workspace is not readable; that's OK
+          }
+
+          await diagnosticsCache.awaitAllDiagnostics(5_000);
+          waitedMs = Date.now() - startMs;
+        } else {
+          waitedMs = 0;
+        }
+
+        let diags = diagnosticsCache.all();
+        if (severity !== "all") {
+          diags = diags.filter((d) => d.severity === severity);
+        }
+        const { items, truncated, returned } = clampResults(diags, maxResults);
+
+        const payload: Record<string, unknown> = { diagnostics: items, returned, truncated, waitedMs };
+        if (warmedUp) payload.warmedUp = true;
+
+        return {
+          content: [{ type: "text" as const, text: JSON.stringify(payload, null, 2) }],
+        };
+      }
+
+      // Neither filePath nor workspaceWide — return all cached
+      let diags = diagnosticsCache.all();
+      if (severity !== "all") {
+        diags = diags.filter((d) => d.severity === severity);
+      }
+      const { items, truncated, returned } = clampResults(diags, maxResults);
+
+      return {
+        content: [{ type: "text" as const, text: JSON.stringify({ diagnostics: items, returned, truncated, waitedMs: 0 }, null, 2) }],
+      };
+    }
+  );
+
+  // ── lsp_diagnostics_summary ─────────────────────────────────────────────────
+
+  server.tool(
+    "lsp_diagnostics_summary",
+    "Return a summary of cached diagnostics grouped by severity, file, source, and message with a likely root cause.",
+    {
+      filePath: z.string().optional().describe("Absolute or workspace-relative path to a file, or omit for all cached diagnostics."),
+      workspaceWide: z.boolean().default(false).describe("If true, warm the workspace before summarizing."),
+    },
+    async (args: { filePath?: string; workspaceWide?: boolean }) => {
+      const { filePath, workspaceWide = false } = args;
+      const { workspacePath } = ctx;
+
+      let diags: NormalizedDiagnostic[];
+
+      if (filePath) {
+        let resolvedPath: string;
+        try {
+          resolvedPath = await safeResolve(workspacePath, filePath);
+        } catch {
+          return {
+            content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.PATH_OUTSIDE_WORKSPACE, `Path is outside workspace: ${filePath}`), null, 2) }],
+          };
+        }
+
+        const ext = extname(resolvedPath);
+        const lang = routeLanguage(ext);
+        if (!lang) {
+          return {
+            content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.UNSUPPORTED_LANGUAGE, `No LSP server registered for extension: ${ext}`), null, 2) }],
+          };
+        }
+
+        try {
+          await stat(resolvedPath);
+        } catch (err: unknown) {
+          if (err instanceof Error && (err as NodeJS.ErrnoException).code === "ENOENT") {
+            return {
+              content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.FILE_NOT_FOUND, `File not found: ${resolvedPath}`), null, 2) }],
+            };
+          }
+          throw err;
+        }
+
+        const rootUri = fileToUri(workspacePath);
+        const client = await clientManager.getClientForLanguage(lang, { workspacePath, rootUri });
+        if (!client) {
+          return {
+            content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.LSP_SERVER_UNAVAILABLE, `No LSP server available for language: ${lang}`), null, 2) }],
+          };
+        }
+
+        const { uri } = await ensureOpen(client, resolvedPath, lang);
+        await diagnosticsCache.awaitDiagnostics(uri, 2_000);
+        diags = diagnosticsCache.get(uri);
+      } else if (workspaceWide) {
+        const allDiags = diagnosticsCache.all();
+        if (allDiags.length === 0) {
+          const extSet = new Set<string>();
+          for (const entry of Object.values(languageServers)) {
+            for (const e of entry.extensions) extSet.add(e);
+          }
+          const rootUri = fileToUri(workspacePath);
+          try {
+            const files = await walkSourceFiles(workspacePath, extSet);
+            for (const f of files) {
+              const e = extname(f);
+              const l = routeLanguage(e);
+              if (!l) continue;
+              try {
+                const c = await clientManager.getClientForLanguage(l, { workspacePath, rootUri });
+                if (c) await ensureOpen(c, f, l);
+              } catch {
+                // skip
+              }
+            }
+          } catch {
+            // walk may fail
+          }
+          await diagnosticsCache.awaitAllDiagnostics(5_000);
+        }
+        diags = diagnosticsCache.all();
+      } else {
+        diags = diagnosticsCache.all();
+      }
+
+      const summary = buildDiagnosticsSummary(diags);
+      return {
+        content: [{ type: "text" as const, text: JSON.stringify(summary, null, 2) }],
+      };
+    }
+  );
+
   // Touch `ctx` so the parameter is considered used; later phases will need it.
   void ctx;
+}
+
+async function walkSourceFiles(dir: string, extensions: Set<string>): Promise<string[]> {
+  const files: string[] = [];
+  let entries;
+  try {
+    entries = await readdir(dir, { withFileTypes: true });
+  } catch {
+    return files;
+  }
+  for (const entry of entries) {
+    if (entry.name.startsWith(".") || entry.name === "node_modules") continue;
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...(await walkSourceFiles(full, extensions)));
+    } else if (entry.isFile() && extensions.has(extname(entry.name))) {
+      files.push(full);
+    }
+  }
+  return files;
 }

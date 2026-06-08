@@ -3,6 +3,8 @@ import { StreamMessageReader, StreamMessageWriter } from "vscode-jsonrpc/lib/nod
 import { ChildProcess, execFile, spawn } from "child_process";
 import { ServerCapabilitiesSnapshot, extractCapabilities } from "./capabilities.js";
 import { withTimeout } from "../utils/asyncTimeout.js";
+import { diagnosticsCache } from "./diagnosticsCache.js";
+import { diagnosticFromLsp, uriToRel } from "./normalize.js";
 
 export interface SpawnOptions {
   command: string;
@@ -16,11 +18,13 @@ export class LspClient {
   private proc: ChildProcess;
   private connection: MessageConnection;
   private caps: ServerCapabilitiesSnapshot;
+  private workspacePath: string;
 
-  private constructor(proc: ChildProcess, connection: MessageConnection, caps: ServerCapabilitiesSnapshot) {
+  private constructor(proc: ChildProcess, connection: MessageConnection, caps: ServerCapabilitiesSnapshot, workspacePath: string) {
     this.proc = proc;
     this.connection = connection;
     this.caps = caps;
+    this.workspacePath = workspacePath;
   }
 
   static async spawn(opts: SpawnOptions): Promise<LspClient> {
@@ -98,11 +102,14 @@ export class LspClient {
 
     // Subscribe to publishDiagnostics notifications
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    connection.onNotification("publishDiagnostics", (params: any) => {
-      console.error(`[lsp:${proc.pid}] publishDiagnostics: ${params.uri} (${params.diagnostics?.length ?? 0} diagnostics)`);
+    connection.onNotification("textDocument/publishDiagnostics", (params: any) => {
+      const filePath = uriToRel(opts.workspacePath, params.uri);
+      const normalized = (params.diagnostics ?? []).map((d: any) => diagnosticFromLsp(filePath, d));
+      diagnosticsCache.set(params.uri, normalized);
+      console.error(`[lsp:${proc.pid}] publishDiagnostics: ${params.uri} (${normalized.length} diagnostics)`);
     });
 
-    return new LspClient(proc, connection, caps);
+    return new LspClient(proc, connection, caps, opts.workspacePath);
   }
 
   async request<R>(method: string, params: unknown, timeoutMs?: number): Promise<R> {
