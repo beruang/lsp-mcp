@@ -36,3 +36,35 @@ export function toolError(
   }
   return envelope;
 }
+
+/**
+ * Well-known error codes used across the tool layer.
+ */
+export const ErrorCodes = {
+  PATH_OUTSIDE_WORKSPACE: "path_outside_workspace",
+  UNSUPPORTED_LANGUAGE: "unsupported_language",
+  FILE_NOT_FOUND: "file_not_found",
+  LSP_SERVER_UNAVAILABLE: "lsp_server_unavailable",
+  LSP_SERVER_NOT_INITIALIZED: "lsp_server_not_initialized",
+  LSP_REQUEST_FAILED: "lsp_request_failed",
+  LSP_REQUEST_TIMEOUT: "lsp_request_timeout",
+  LSP_CAPABILITY_UNSUPPORTED: "lsp_capability_unsupported",
+} as const;
+
+/**
+ * Build a ToolError from an arbitrary cause.
+ * Uses the well-known codes when the cause matches known error types.
+ */
+export function toolErrorFromCause(cause: unknown): ToolError {
+  if (cause instanceof Error) {
+    const msg = cause.message;
+    if (msg.includes("not found on PATH")) {
+      return toolError(ErrorCodes.LSP_SERVER_UNAVAILABLE, msg);
+    }
+    if (msg.includes("Path is outside workspace")) {
+      return toolError(ErrorCodes.PATH_OUTSIDE_WORKSPACE, msg);
+    }
+    return toolError("internal_error", msg);
+  }
+  return toolError("internal_error", String(cause));
+}

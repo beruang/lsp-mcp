@@ -2,18 +2,20 @@ import { LspClient } from "./LspClient.js";
 import { languageServers } from "../config/languageServers.js";
 
 export class LspClientManager {
-  private clients = new Map<string, LspClient>();
+  /** Cache of pending or completed client spawn promises, keyed by language. */
+  private clientPromises = new Map<string, Promise<LspClient | null>>();
 
   /**
-   * Returns an existing client for `lang` or spawns a new one if none exists.
+   * Returns a promise for an existing client for `lang` or spawns a new one if none exists.
    * Returns null if `lang` is not registered in the language server registry.
    */
-  getClientForLanguage(
+  async getClientForLanguage(
     lang: string,
     opts: { workspacePath: string; rootUri: string }
-  ): LspClient | null {
-    if (this.clients.has(lang)) {
-      return this.clients.get(lang)!;
+  ): Promise<LspClient | null> {
+    // If a promise already exists, return it (prevents duplicate spawns)
+    if (this.clientPromises.has(lang)) {
+      return this.clientPromises.get(lang)!;
     }
 
     const entry = languageServers[lang];
@@ -21,14 +23,14 @@ export class LspClientManager {
       return null;
     }
 
-    const client = LspClient.spawn({
+    const promise = LspClient.spawn({
       command: entry.command,
       args: entry.args,
       workspacePath: opts.workspacePath,
       rootUri: opts.rootUri,
-    }) as unknown as LspClient;
+    }) as Promise<LspClient>;
 
-    this.clients.set(lang, client);
-    return client;
+    this.clientPromises.set(lang, promise);
+    return promise;
   }
 }
