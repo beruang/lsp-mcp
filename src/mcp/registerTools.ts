@@ -11,6 +11,8 @@ import { locationFromLsp, hoverToString, fileToUri, referencesFromLsp, documentS
 import { diagnosticsCache } from "../lsp/diagnosticsCache.js";
 import type { NormalizedDiagnostic } from "../lsp/diagnosticsCache.js";
 import { buildDiagnosticsSummary } from "../composite/diagnosticsSummary.js";
+import { validateWorkspaceEdit, countEdits } from "../safety/workspaceEdit.js";
+import { workspaceEditToDiff } from "../diff/workspaceEditToDiff.js";
 import { toolError, ErrorCodes } from "./toolErrors.js";
 
 /**
@@ -753,6 +755,139 @@ export function registerAllTools(
       const summary = buildDiagnosticsSummary(diags);
       return {
         content: [{ type: "text" as const, text: JSON.stringify(summary, null, 2) }],
+      };
+    }
+  );
+
+  // ── lsp_rename_preview ──────────────────────────────────────────────────────
+
+  server.tool(
+    "lsp_rename_preview",
+    "Preview a rename operation. Returns the WorkspaceEdit and a unified diff. No files are written to disk.",
+    {
+      filePath: z.string().describe("Absolute or workspace-relative path to the file."),
+      position: z.object({
+        line: z.number().int().nonnegative().describe("Zero-based line number."),
+        character: z.number().int().nonnegative().describe("Zero-based UTF-16 character offset."),
+      }).describe("Line/character position (zero-based) of the symbol to rename."),
+      newName: z.string().min(1).describe("The new name for the symbol."),
+      includeDiff: z.boolean().default(true).describe("Whether to include a unified diff in the response."),
+    },
+    async (args: { filePath: string; position: { line: number; character: number }; newName: string; includeDiff?: boolean }) => {
+      const { filePath, position, newName, includeDiff = true } = args;
+      const { workspacePath } = ctx;
+
+      // 1. Validate filePath is inside workspace
+      let resolvedPath: string;
+      try {
+        resolvedPath = await safeResolve(workspacePath, filePath);
+      } catch {
+        return {
+          content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.PATH_OUTSIDE_WORKSPACE, `Path is outside workspace: ${filePath}`), null, 2) }],
+        };
+      }
+
+      // 2. Route extension to language
+      const ext = extname(resolvedPath);
+      const lang = routeLanguage(ext);
+      if (!lang) {
+        return {
+          content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.UNSUPPORTED_LANGUAGE, `No LSP server registered for extension: ${ext}`), null, 2) }],
+        };
+      }
+
+      // 3. Ensure file exists on disk
+      try {
+        await stat(resolvedPath);
+      } catch (err: unknown) {
+        if (err instanceof Error && (err as NodeJS.ErrnoException).code === "ENOENT") {
+          return {
+            content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.FILE_NOT_FOUND, `File not found: ${resolvedPath}`), null, 2) }],
+          };
+        }
+        throw err;
+      }
+
+      // 4. Get or create LSP client
+      const rootUri = fileToUri(workspacePath);
+      const client = await clientManager.getClientForLanguage(lang, { workspacePath, rootUri });
+      if (!client) {
+        return {
+          content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.LSP_SERVER_UNAVAILABLE, `No LSP server available for language: ${lang}`), null, 2) }],
+        };
+      }
+
+      // 5. Ensure document is open
+      const { uri } = await ensureOpen(client, resolvedPath, lang);
+
+      // 6. Check renameProvider capability
+      const caps = client.getCapabilities();
+      if (!caps.renameProvider) {
+        return {
+          content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.LSP_CAPABILITY_UNSUPPORTED, "renameProvider not supported by this LSP server"), null, 2) }],
+        };
+      }
+
+      // 7. Prepare rename first
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let prepareResult: any;
+      try {
+        prepareResult = await client.request("textDocument/prepareRename", { textDocument: { uri }, position }, LIMITS.TIMEOUTS.RENAME_MS);
+      } catch {
+        return {
+          content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.LSP_REQUEST_FAILED, "prepareRename failed"), null, 2) }],
+        };
+      }
+
+      if (!prepareResult) {
+        return {
+          content: [{ type: "text" as const, text: JSON.stringify({ canRename: false, changedFiles: [], editCount: 0, safe: true, violations: [{ type: "cannot_rename", message: "Symbol cannot be renamed at this position" }] }, null, 2) }],
+        };
+      }
+
+      // 8. Call textDocument/rename
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let renameResult: any;
+      try {
+        renameResult = await client.request("textDocument/rename", {
+          textDocument: { uri },
+          position,
+          newName,
+        }, LIMITS.TIMEOUTS.RENAME_MS);
+      } catch (err: unknown) {
+        return {
+          content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.LSP_REQUEST_FAILED, String(err)), null, 2) }],
+        };
+      }
+
+      if (!renameResult) {
+        return {
+          content: [{ type: "text" as const, text: JSON.stringify({ canRename: false, changedFiles: [], editCount: 0, safe: true, violations: [{ type: "rename_returned_null", message: "Rename returned null" }] }, null, 2) }],
+        };
+      }
+
+      // 9. Validate the WorkspaceEdit
+      const validation = await validateWorkspaceEdit(renameResult, workspacePath);
+      const editCount = countEdits(renameResult);
+
+      // 10. Generate diff if requested and safe
+      let diff: string | undefined;
+      if (includeDiff && validation.safe) {
+        diff = workspaceEditToDiff(renameResult, workspacePath);
+      }
+
+      const payload = {
+        canRename: true,
+        changedFiles: validation.changedFiles,
+        editCount,
+        workspaceEdit: renameResult,
+        ...(diff !== undefined ? { diff } : {}),
+        safe: validation.safe,
+        violations: validation.violations,
+      };
+
+      return {
+        content: [{ type: "text" as const, text: JSON.stringify(payload, null, 2) }],
       };
     }
   );

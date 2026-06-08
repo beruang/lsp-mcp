@@ -5,6 +5,7 @@ export interface ServerCapabilitiesSnapshot {
   documentSymbolProvider: boolean | unknown;
   workspaceSymbolProvider: boolean | unknown;
   diagnosticProvider: boolean | unknown;
+  renameProvider: boolean | unknown;
   raw: Record<string, unknown>;
 }
 
@@ -16,6 +17,7 @@ export function extractCapabilities(sc: any): ServerCapabilitiesSnapshot {
     documentSymbolProvider: sc?.documentSymbolProvider ?? false,
     workspaceSymbolProvider: sc?.workspaceSymbolProvider ?? false,
     diagnosticProvider: sc?.diagnosticProvider ?? false,
+    renameProvider: sc?.renameProvider ?? false,
     raw: sc ?? {}
   };
 }
