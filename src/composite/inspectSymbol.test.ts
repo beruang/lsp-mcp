@@ -1,6 +1,5 @@
 import { test, describe } from "node:test";
 import { strict as assert } from "node:assert";
-import { inspectSymbol } from "./inspectSymbol.js";
 import type { Position, NormalizedLocation, NormalizedDocumentSymbol } from "../lsp/normalize.js";
 
 // Test the enclosing symbol and risk hints logic indirectly via the helper behavior.

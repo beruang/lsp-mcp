@@ -10,7 +10,7 @@ const DIFF_LINE_CAP = 200;
  * Reads current file content from disk, applies edits in memory,
  * and returns a combined unified diff.
  */
-export function workspaceEditToDiff(edit: WorkspaceEdit, workspacePath: string): string {
+export function workspaceEditToDiff(edit: WorkspaceEdit, _workspacePath: string): string {
   const fileMap = new Map<string, TextEdit[]>();
 
   if (edit.changes) {

@@ -1,0 +1,6 @@
+{
+  "*.ts": [
+    "eslint --fix --max-warnings 0",
+    "bash -c 'pnpm run typecheck'"
+  ]
+}

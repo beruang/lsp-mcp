@@ -1,6 +1,6 @@
 import { test, describe } from "node:test";
 import { strict as assert } from "node:assert";
-import { fileToUri, uriToRel, locationFromLsp, hoverToString, symbolKindToString, documentSymbolsFromLsp } from "./normalize.js";
+import { fileToUri, locationFromLsp, hoverToString, symbolKindToString, documentSymbolsFromLsp } from "./normalize.js";
 import { clampResults } from "../safety/limits.js";
 import { SymbolKind } from "vscode-languageserver-types";
 

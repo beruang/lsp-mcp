@@ -11,7 +11,6 @@
 
 import { spawn } from "node:child_process";
 import { resolve, join } from "node:path";
-import { pathToFileURL } from "node:url";
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 

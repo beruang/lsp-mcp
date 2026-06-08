@@ -71,12 +71,6 @@ async function main() {
     const helloPy = join(fixtureRoot, "src", "hello.py");
     const usagePy = join(fixtureRoot, "src", "usage.py");
 
-    // Check for pyright-langserver availability
-    const healthCheck = (await send("tools/call", {
-      name: "lsp_health_check",
-      arguments: {},
-    })) as { content: Array<{ text: string }> };
-
     // Helper to check if a response is a server-unavailable error
     const isServerUnavailable = (payload: unknown): boolean => {
       const p = payload as Record<string, unknown>;

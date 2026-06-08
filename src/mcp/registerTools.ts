@@ -7,7 +7,7 @@ import { languageServers, routeLanguage } from "../config/languageServers.js";
 import { safeResolve } from "../safety/paths.js";
 import { LIMITS, clampResults } from "../safety/limits.js";
 import { ensureOpen } from "../lsp/documentStore.js";
-import { locationFromLsp, hoverToString, fileToUri, referencesFromLsp, documentSymbolsFromLsp, workspaceSymbolsFromLsp, diagnosticSeverityToString } from "../lsp/normalize.js";
+import { locationFromLsp, hoverToString, fileToUri, referencesFromLsp, documentSymbolsFromLsp, workspaceSymbolsFromLsp } from "../lsp/normalize.js";
 import { diagnosticsCache, waitConfig } from "../lsp/diagnosticsCache.js";
 import type { NormalizedDiagnostic } from "../lsp/diagnosticsCache.js";
 import { buildDiagnosticsSummary } from "../composite/diagnosticsSummary.js";
@@ -127,7 +127,6 @@ export function registerAllTools(
       // 7. Send hover request
       let hoverResult: ReturnType<typeof hoverToString>;
       try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const raw = await client.request("textDocument/hover", { textDocument: { uri }, position }, LIMITS.TIMEOUTS.HOVER_MS) as any;
         hoverResult = hoverToString(raw);
       } catch (err: unknown) {
@@ -220,7 +219,6 @@ export function registerAllTools(
       // 7. Send definition request
       let rawLocs: unknown[];
       try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         rawLocs = await client.request("textDocument/definition", { textDocument: { uri }, position }, LIMITS.TIMEOUTS.DEFINITION_MS) as any[];
       } catch (err: unknown) {
         return {
@@ -323,7 +321,6 @@ export function registerAllTools(
       // 7. Send references request
       let rawRefs: unknown[];
       try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         rawRefs = await client.request("textDocument/references", {
           textDocument: { uri },
           position,
@@ -421,7 +418,6 @@ export function registerAllTools(
       // 7. Send document symbols request
       let rawSyms: unknown;
       try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         rawSyms = await client.request("textDocument/documentSymbol", { textDocument: { uri } }, LIMITS.TIMEOUTS.DOCUMENT_SYMBOLS_MS) as any;
       } catch (err: unknown) {
         return {
@@ -469,7 +465,7 @@ export function registerAllTools(
 
       if (language === "auto") {
         // Query all registered language servers
-        for (const [lang, entry] of Object.entries(languageServers)) {
+        for (const [lang] of Object.entries(languageServers)) {
           const client = await clientManager.getClientForLanguage(lang, { workspacePath, rootUri });
           if (!client) continue;
 
@@ -478,7 +474,6 @@ export function registerAllTools(
 
           let rawSyms: unknown;
           try {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             rawSyms = await client.request("workspace/symbol", { query }, LIMITS.TIMEOUTS.WORKSPACE_SYMBOLS_MS) as any;
           } catch {
             continue;
@@ -505,7 +500,6 @@ export function registerAllTools(
 
         let rawSyms: unknown;
         try {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           rawSyms = await client.request("workspace/symbol", { query }, LIMITS.TIMEOUTS.WORKSPACE_SYMBOLS_MS) as any;
         } catch (err: unknown) {
           return {
@@ -830,7 +824,6 @@ export function registerAllTools(
       }
 
       // 7. Prepare rename first
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let prepareResult: any;
       try {
         prepareResult = await client.request("textDocument/prepareRename", { textDocument: { uri }, position }, LIMITS.TIMEOUTS.RENAME_MS);
@@ -847,7 +840,6 @@ export function registerAllTools(
       }
 
       // 8. Call textDocument/rename
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let renameResult: any;
       try {
         renameResult = await client.request("textDocument/rename", {

@@ -1,5 +1,5 @@
 import type { LspClient } from "../lsp/LspClient.js";
-import { hoverToString, locationFromLsp, referencesFromLsp, documentSymbolsFromLsp, uriToRel } from "../lsp/normalize.js";
+import { hoverToString, locationFromLsp, referencesFromLsp, documentSymbolsFromLsp } from "../lsp/normalize.js";
 import type { Position, NormalizedLocation, NormalizedDocumentSymbol } from "../lsp/normalize.js";
 import { LIMITS, clampResults } from "../safety/limits.js";
 
@@ -47,7 +47,6 @@ export async function inspectSymbol(
 
   // ── 1. Hover (shortest timeout first) ─────────────────────────────────────
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const rawHover = await client.request("textDocument/hover", {
       textDocument: { uri }, position,
     }, LIMITS.TIMEOUTS.HOVER_MS) as any;
@@ -58,7 +57,6 @@ export async function inspectSymbol(
 
   // ── 2. Definition ─────────────────────────────────────────────────────────
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const rawDefs = await client.request("textDocument/definition", {
       textDocument: { uri }, position,
     }, LIMITS.TIMEOUTS.DEFINITION_MS) as any[];
@@ -74,7 +72,6 @@ export async function inspectSymbol(
 
   // ── 3. References ─────────────────────────────────────────────────────────
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const rawRefs = await client.request("textDocument/references", {
       textDocument: { uri },
       position,
@@ -90,7 +87,6 @@ export async function inspectSymbol(
 
   // ── 4. Document Symbols ───────────────────────────────────────────────────
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const rawSyms = await client.request("textDocument/documentSymbol", {
       textDocument: { uri },
     }, LIMITS.TIMEOUTS.DOCUMENT_SYMBOLS_MS) as any;

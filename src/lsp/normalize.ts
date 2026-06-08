@@ -137,12 +137,6 @@ export function symbolKindToString(kind: number | string | undefined): string {
 
 // ─── referencesFromLsp ────────────────────────────────────────────────────────
 
-interface LspReferencesParams {
-  textDocument: { uri: string };
-  position: Position;
-  context: { includeDeclaration: boolean };
-}
-
 /**
  * Normalize LSP references response into sorted NormalizedLocation array.
  */

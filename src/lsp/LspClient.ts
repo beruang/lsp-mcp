@@ -32,7 +32,7 @@ export class LspClient {
 
     // Check if command exists on PATH
     await new Promise<void>((resolve, reject) => {
-      execFile("command", ["-v", opts.command], (err, stdout, stderr) => {
+      execFile("command", ["-v", opts.command], (err, stdout) => {
         if (err || stdout.trim() === "") {
           reject(new Error(`lsp_server_unavailable: ${opts.command} not found on PATH`));
         } else {
@@ -89,7 +89,6 @@ export class LspClient {
       initializationOptions: {}
     };
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const response = await withTimeout(
       connection.sendRequest("initialize", initializeParams) as Promise<any>,
       startupTimeoutMs,
@@ -101,7 +100,6 @@ export class LspClient {
     const caps = extractCapabilities(response?.capabilities);
 
     // Subscribe to publishDiagnostics notifications
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     connection.onNotification("textDocument/publishDiagnostics", (params: any) => {
       const filePath = uriToRel(opts.workspacePath, params.uri);
       const normalized = (params.diagnostics ?? []).map((d: any) => diagnosticFromLsp(filePath, d));

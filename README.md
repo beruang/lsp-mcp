@@ -599,6 +599,10 @@ The server is designed for **read-oriented** coding agents. It enforces:
 # Type-check (no emit)
 pnpm run typecheck
 
+# Lint
+pnpm run lint            # ESLint (zero warnings enforced)
+pnpm run lint:fix        # ESLint with auto-fix
+
 # Run directly with tsx (no build step)
 pnpm run dev
 
@@ -609,13 +613,22 @@ pnpm run build
 WORKSPACE_PATH=./fixtures/sample-ts pnpm run start
 ```
 
+### Pre-commit Hook
+
+A [husky](https://typicode.github.io/husky/) pre-commit hook runs [lint-staged](https://github.com/lint-staged/lint-staged) on staged `.ts` files:
+
+1. `eslint --fix --max-warnings 0` — fixable rules applied, remaining issues block commit
+2. `pnpm run typecheck` — full TypeScript type-check
+
+The hook is installed automatically via the `"prepare"` script on `pnpm install`.
+
 ### Project Conventions
 
 - **Module system:** ESM (`"type": "module"`, `NodeNext` resolution)
 - **TypeScript:** strict mode, target ES2022
 - **Testing:** `node --test` (native test runner) with `tsx` for TypeScript
-- **Formatting:** No formatter enforced (TS compiler is the primary gate)
-- **Linting:** No ESLint configured — `tsc --noEmit` serves as the lint step
+- **Linting:** ESLint with `@typescript-eslint` — unused vars are errors, `no-explicit-any` is off (LSP protocol data is loosely typed)
+- **Formatting:** No formatter enforced — ESLint handles code-quality rules, `tsc` handles correctness
 
 ---
 
