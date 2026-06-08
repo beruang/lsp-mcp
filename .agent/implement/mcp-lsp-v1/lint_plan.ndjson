@@ -1,2 +1,0 @@
-{"type":"lint_command","id":"tsc","command":"pnpm run typecheck","required":true,"stage":"pre_review","detected_from":"tsconfig.json (tsc --noEmit used as linter proxy)"}
-{"type":"lint_command","id":"build","command":"pnpm run build","required":true,"stage":"pre_review","detected_from":"package.json scripts"}
