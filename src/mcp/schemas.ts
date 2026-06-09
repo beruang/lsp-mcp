@@ -5,8 +5,8 @@ import { z } from "zod";
  * See spec §9.1.
  */
 export const PositionSchema = z.object({
-  line: z.number().int().nonnegative(),
-  character: z.number().int().nonnegative(),
+  line: z.coerce.number().int().nonnegative(),
+  character: z.coerce.number().int().nonnegative(),
 });
 
 /**

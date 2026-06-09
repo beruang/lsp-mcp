@@ -11,10 +11,16 @@ export function fileToUri(p: string): string {
 }
 
 /**
+ * Convert a file:// URI back to an absolute filesystem path.
+ */
+export function uriToAbs(uri: string): string {
+  return fileURLToPath(uri);
+}
+
+/**
  * Convert a file:// URI back to a path relative to the workspace root.
  */
 export function uriToRel(workspacePath: string, uri: string): string {
-  // Decode file:// URL to filesystem path using the standard Node.js conversion
   const filePath = fileURLToPath(uri);
   return relative(workspacePath, filePath);
 }

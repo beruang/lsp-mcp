@@ -9,6 +9,7 @@ export interface ServerCapabilitiesSnapshot {
   renameProvider: boolean | unknown;
   // V2
   codeActionProvider: boolean | unknown;
+  codeActionResolveProvider: boolean;
   documentFormattingProvider: boolean | unknown;
   documentRangeFormattingProvider: boolean | unknown;
   // V3
@@ -19,6 +20,7 @@ export interface ServerCapabilitiesSnapshot {
   completionProvider: boolean;
   callHierarchyProvider: boolean;
   typeHierarchyProvider: boolean;
+  prepareRenameProvider: boolean;
   raw: Record<string, unknown>;
 }
 
@@ -35,6 +37,7 @@ export function extractCapabilities(sc: any): ServerCapabilitiesSnapshot {
     renameProvider: caps.renameProvider ?? false,
     // V2
     codeActionProvider: caps.codeActionProvider ?? false,
+    codeActionResolveProvider: !!(caps.codeActionProvider && typeof caps.codeActionProvider === "object" && (caps.codeActionProvider as any).resolveProvider),
     documentFormattingProvider: caps.documentFormattingProvider ?? false,
     documentRangeFormattingProvider: caps.documentRangeFormattingProvider ?? false,
     // V3
@@ -45,6 +48,7 @@ export function extractCapabilities(sc: any): ServerCapabilitiesSnapshot {
     completionProvider: !!caps.completionProvider,
     callHierarchyProvider: !!caps.callHierarchyProvider,
     typeHierarchyProvider: !!caps.typeHierarchyProvider,
+    prepareRenameProvider: !!caps.prepareRenameProvider,
     raw: caps
   };
 }
