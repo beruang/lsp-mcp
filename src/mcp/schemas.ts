@@ -360,3 +360,11 @@ export const ReadinessInputSchema = z.object({
 export const LivenessInputSchema = z.object({
   includeMemory: z.boolean().default(false).describe("Include memory usage statistics."),
 });
+
+// ── V4: Debug ───────────────────────────────────────────────────────────────
+
+export const RawRequestInputSchema = z.object({
+  language: z.string().describe("Language server to send the request to."),
+  method: z.string().describe("LSP method name (e.g., textDocument/hover)."),
+  params: z.record(z.string(), z.unknown()).optional().describe("LSP request parameters."),
+});

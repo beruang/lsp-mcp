@@ -51,6 +51,7 @@ import {
   ClearCachesInputSchema,
   ReadinessInputSchema,
   LivenessInputSchema,
+  RawRequestInputSchema,
 } from "./schemas.js";
 import { formatDocument, formatRange } from "../formatting/formatPreview.js";
 import { waitForDiagnostics } from "../diagnostics/waitForDiagnostics.js";
@@ -88,6 +89,7 @@ import { getRequestLog, clearRequestLog } from "../observability/requestLog.js";
 import { registerCache, getCacheStatus, clearCache, clearAllCaches } from "../cache/cacheStatus.js";
 import { checkReadiness } from "../ops/readiness.js";
 import { checkLiveness } from "../ops/liveness.js";
+import { rawRequest } from "../debug/rawRequest.js";
 
 /**
  * Shared context passed to every tool registration.
@@ -2716,6 +2718,35 @@ export function registerAllTools(
         return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
       } catch (err: unknown) {
         return { content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.LSP_REQUEST_FAILED, String(err)), null, 2) }] };
+      }
+    }
+  );
+
+  // ── V4: lsp_raw_request (debug, disabled by default) ──────────────────────────
+
+  server.tool(
+    "lsp_raw_request",
+    "Send a raw LSP request to a language server. Disabled by default — enable via LSP_RAW_REQUEST_ENABLED env var or update_runtime_config. Dangerous methods are always blocked.",
+    RawRequestInputSchema.shape,
+    async (args) => {
+      try {
+        const rootUri = fileToUri(ctx.workspacePath);
+        const result = await rawRequest(
+          clientManager,
+          args.language,
+          args.method,
+          args.params ?? {},
+          ctx.workspacePath,
+          rootUri
+        );
+        return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+      } catch (err: unknown) {
+        const msg = String(err);
+        let code: string = ErrorCodes.LSP_REQUEST_FAILED;
+        if (msg.includes("raw_request_disabled")) code = ErrorCodes.RAW_REQUEST_DISABLED;
+        else if (msg.includes("method_denied")) code = ErrorCodes.METHOD_DENIED;
+        else if (msg.includes("not_found")) code = ErrorCodes.SERVER_NOT_FOUND;
+        return { content: [{ type: "text" as const, text: JSON.stringify(toolError(code, msg), null, 2) }] };
       }
     }
   );
