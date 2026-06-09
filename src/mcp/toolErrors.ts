@@ -49,6 +49,20 @@ export const ErrorCodes = {
   LSP_REQUEST_FAILED: "lsp_request_failed",
   LSP_REQUEST_TIMEOUT: "lsp_request_timeout",
   LSP_CAPABILITY_UNSUPPORTED: "lsp_capability_unsupported",
+  // V3
+  DECLARATION_NOT_SUPPORTED: "declaration_not_supported",
+  TYPE_DEFINITION_NOT_SUPPORTED: "type_definition_not_supported",
+  IMPLEMENTATION_NOT_SUPPORTED: "implementation_not_supported",
+  SIGNATURE_HELP_NOT_SUPPORTED: "signature_help_not_supported",
+  COMPLETION_NOT_SUPPORTED: "completion_not_supported",
+  CALL_HIERARCHY_NOT_SUPPORTED: "call_hierarchy_not_supported",
+  CALL_HIERARCHY_ITEM_NOT_FOUND: "call_hierarchy_item_not_found",
+  CALL_HIERARCHY_ITEM_EXPIRED: "call_hierarchy_item_expired",
+  TYPE_HIERARCHY_NOT_SUPPORTED: "type_hierarchy_not_supported",
+  TYPE_HIERARCHY_ITEM_NOT_FOUND: "type_hierarchy_item_not_found",
+  TYPE_HIERARCHY_ITEM_EXPIRED: "type_hierarchy_item_expired",
+  CHANGE_IMPACT_ANALYSIS_INCOMPLETE: "change_impact_analysis_incomplete",
+  DIAGNOSTIC_NOT_FOUND: "diagnostic_not_found",
 } as const;
 
 /**

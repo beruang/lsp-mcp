@@ -16,7 +16,23 @@ import { workspaceEditToDiff } from "../diff/workspaceEditToDiff.js";
 import { inspectSymbol } from "../composite/inspectSymbol.js";
 import { toolError, ErrorCodes } from "./toolErrors.js";
 import { buildWorkspaceEditPreview, buildValidateWorkspaceEditResult } from "../workspaceEdit/previewWorkspaceEdit.js";
-import { WorkspaceEditPreviewInputSchema, ValidateWorkspaceEditInputSchema } from "./schemas.js";
+import {
+  WorkspaceEditPreviewInputSchema,
+  ValidateWorkspaceEditInputSchema,
+  DeclarationInputSchema,
+  TypeDefinitionInputSchema,
+  ImplementationInputSchema,
+  SignatureHelpInputSchema,
+  CompletionInputSchema,
+  PrepareCallHierarchyInputSchema,
+  IncomingCallsInputSchema,
+  OutgoingCallsInputSchema,
+  PrepareTypeHierarchyInputSchema,
+  TypeHierarchyInputSchema,
+  FixDiagnosticCandidatesInputSchema,
+  ExplainDiagnosticsInputSchema,
+  AnalyzeChangeImpactInputSchema,
+} from "./schemas.js";
 import { formatDocument, formatRange } from "../formatting/formatPreview.js";
 import { waitForDiagnostics } from "../diagnostics/waitForDiagnostics.js";
 import { snapshotStore } from "../diagnostics/snapshotStore.js";
@@ -24,6 +40,20 @@ import { compareDiagnostics } from "../diagnostics/compareDiagnostics.js";
 import { prepareRename } from "../refactor/prepareRename.js";
 import { codeActionCache } from "../codeActions/codeActionCache.js";
 import { normalizeCodeAction } from "../codeActions/normalizeCodeAction.js";
+
+// V3 imports
+import { getDeclarationAt } from "../navigation/declaration.js";
+import { getTypeDefinitionAt } from "../navigation/typeDefinition.js";
+import { getImplementationAt } from "../navigation/implementation.js";
+import { getSignatureHelp } from "../navigation/signatureHelp.js";
+import { getCompletion } from "../navigation/completion.js";
+import { callHierarchyCache } from "../hierarchy/callHierarchyCache.js";
+import { prepareCallHierarchy, getIncomingCalls, getOutgoingCalls } from "../hierarchy/callHierarchyTools.js";
+import { typeHierarchyCache } from "../hierarchy/typeHierarchyCache.js";
+import { prepareTypeHierarchy, getSupertypes, getSubtypes } from "../hierarchy/typeHierarchyTools.js";
+import { fixDiagnosticCandidates } from "../semantic/fixDiagnosticCandidates.js";
+import { explainDiagnostics } from "../semantic/explainDiagnostics.js";
+import { analyzeChangeImpact } from "../semantic/analyzeChangeImpact.js";
 
 /**
  * Shared context passed to every tool registration.
@@ -73,11 +103,19 @@ export function registerAllTools(
                 diagnostics: !!caps.diagnosticProvider,
                 rename: !!caps.renameProvider,
                 prepareRename: typeof caps.renameProvider === "object" && !!(caps.renameProvider as Record<string, unknown>).prepareProvider,
-                codeActions: !!caps.raw.codeActionProvider,
-                codeActionResolve: typeof caps.raw.codeActionProvider === "object" && !!(caps.raw.codeActionProvider as Record<string, unknown>).resolveProvider,
-                formatting: !!caps.raw.documentFormattingProvider,
-                rangeFormatting: !!caps.raw.documentRangeFormattingProvider,
-                organizeImports: true, // via source.organizeImports code action
+                codeActions: !!caps.codeActionProvider,
+                codeActionResolve: typeof caps.codeActionProvider === "object" && !!(caps.codeActionProvider as Record<string, unknown>).resolveProvider,
+                formatting: !!caps.documentFormattingProvider,
+                rangeFormatting: !!caps.documentRangeFormattingProvider,
+                organizeImports: true,
+                // V3
+                declaration: caps.declarationProvider,
+                typeDefinition: caps.typeDefinitionProvider,
+                implementation: caps.implementationProvider,
+                signatureHelp: caps.signatureHelpProvider,
+                completion: caps.completionProvider,
+                callHierarchy: caps.callHierarchyProvider,
+                typeHierarchy: caps.typeHierarchyProvider,
               },
             };
           } else {
@@ -90,7 +128,7 @@ export function registerAllTools(
 
       const payload = {
         ok: true,
-        version: "2.0.0",
+        version: "3.0.0",
         workspace: workspacePath,
         v2Tools: [
           "lsp_workspace_edit_preview",
@@ -104,6 +142,22 @@ export function registerAllTools(
           "lsp_wait_for_diagnostics",
           "lsp_snapshot_diagnostics",
           "lsp_compare_diagnostics",
+        ],
+        v3Tools: [
+          "lsp_declaration",
+          "lsp_type_definition",
+          "lsp_implementation",
+          "lsp_signature_help",
+          "lsp_completion",
+          "lsp_prepare_call_hierarchy",
+          "lsp_incoming_calls",
+          "lsp_outgoing_calls",
+          "lsp_prepare_type_hierarchy",
+          "lsp_supertypes",
+          "lsp_subtypes",
+          "lsp_analyze_change_impact",
+          "lsp_fix_diagnostic_candidates",
+          "lsp_explain_diagnostics",
         ],
         languages: languageStatuses,
       };
@@ -1685,6 +1739,541 @@ export function registerAllTools(
       return {
         content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
       };
+    }
+  );
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // V3: Semantic Navigation — declaration, typeDefinition, implementation
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  server.tool(
+    "lsp_declaration",
+    "Find declarations for a symbol. Maps to textDocument/declaration. Useful for C/C++ header/source split, TypeScript interfaces, Java abstract methods.",
+    DeclarationInputSchema.shape,
+    async (args) => {
+      const { filePath, position, maxResults } = args;
+      const { workspacePath } = ctx;
+
+      let resolvedPath: string;
+      try { resolvedPath = await safeResolve(workspacePath, filePath); } catch {
+        return { content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.PATH_OUTSIDE_WORKSPACE, `Path is outside workspace: ${filePath}`), null, 2) }] };
+      }
+
+      const ext = extname(resolvedPath);
+      const lang = routeLanguage(ext);
+      if (!lang) return { content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.UNSUPPORTED_LANGUAGE, `No LSP server registered for: ${ext}`), null, 2) }] };
+
+      try { await stat(resolvedPath); } catch (err: unknown) {
+        if (err instanceof Error && (err as NodeJS.ErrnoException).code === "ENOENT") {
+          return { content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.FILE_NOT_FOUND, `File not found: ${resolvedPath}`), null, 2) }] };
+        }
+        throw err;
+      }
+
+      const rootUri = fileToUri(workspacePath);
+      const client = await clientManager.getClientForLanguage(lang, { workspacePath, rootUri });
+      if (!client) return { content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.LSP_SERVER_UNAVAILABLE, `No LSP server for: ${lang}`), null, 2) }] };
+
+      const { uri } = await ensureOpen(client, resolvedPath, lang);
+
+      const caps = client.getCapabilities();
+      if (!caps.declarationProvider) {
+        return { content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.DECLARATION_NOT_SUPPORTED, "declarationProvider not supported"), null, 2) }] };
+      }
+
+      try {
+        const result = await getDeclarationAt(client, uri, position, workspacePath, maxResults);
+        return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+      } catch (err: unknown) {
+        return { content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.LSP_REQUEST_FAILED, String(err)), null, 2) }] };
+      }
+    }
+  );
+
+  server.tool(
+    "lsp_type_definition",
+    "Find the definition of the type of a symbol. Maps to textDocument/typeDefinition. Resolves variable types to their type/interface/class definitions.",
+    TypeDefinitionInputSchema.shape,
+    async (args) => {
+      const { filePath, position, maxResults } = args;
+      const { workspacePath } = ctx;
+
+      let resolvedPath: string;
+      try { resolvedPath = await safeResolve(workspacePath, filePath); } catch {
+        return { content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.PATH_OUTSIDE_WORKSPACE, `Path is outside workspace: ${filePath}`), null, 2) }] };
+      }
+
+      const ext = extname(resolvedPath);
+      const lang = routeLanguage(ext);
+      if (!lang) return { content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.UNSUPPORTED_LANGUAGE, `No LSP server registered for: ${ext}`), null, 2) }] };
+
+      try { await stat(resolvedPath); } catch (err: unknown) {
+        if (err instanceof Error && (err as NodeJS.ErrnoException).code === "ENOENT") {
+          return { content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.FILE_NOT_FOUND, `File not found: ${resolvedPath}`), null, 2) }] };
+        }
+        throw err;
+      }
+
+      const rootUri = fileToUri(workspacePath);
+      const client = await clientManager.getClientForLanguage(lang, { workspacePath, rootUri });
+      if (!client) return { content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.LSP_SERVER_UNAVAILABLE, `No LSP server for: ${lang}`), null, 2) }] };
+
+      const { uri } = await ensureOpen(client, resolvedPath, lang);
+
+      const caps = client.getCapabilities();
+      if (!caps.typeDefinitionProvider) {
+        return { content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.TYPE_DEFINITION_NOT_SUPPORTED, "typeDefinitionProvider not supported"), null, 2) }] };
+      }
+
+      try {
+        const result = await getTypeDefinitionAt(client, uri, position, workspacePath, maxResults);
+        return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+      } catch (err: unknown) {
+        return { content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.LSP_REQUEST_FAILED, String(err)), null, 2) }] };
+      }
+    }
+  );
+
+  server.tool(
+    "lsp_implementation",
+    "Find implementations of an interface, trait, abstract class, or method. Maps to textDocument/implementation. Answers 'who implements this?'",
+    ImplementationInputSchema.shape,
+    async (args) => {
+      const { filePath, position, maxResults } = args;
+      const { workspacePath } = ctx;
+
+      let resolvedPath: string;
+      try { resolvedPath = await safeResolve(workspacePath, filePath); } catch {
+        return { content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.PATH_OUTSIDE_WORKSPACE, `Path is outside workspace: ${filePath}`), null, 2) }] };
+      }
+
+      const ext = extname(resolvedPath);
+      const lang = routeLanguage(ext);
+      if (!lang) return { content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.UNSUPPORTED_LANGUAGE, `No LSP server registered for: ${ext}`), null, 2) }] };
+
+      try { await stat(resolvedPath); } catch (err: unknown) {
+        if (err instanceof Error && (err as NodeJS.ErrnoException).code === "ENOENT") {
+          return { content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.FILE_NOT_FOUND, `File not found: ${resolvedPath}`), null, 2) }] };
+        }
+        throw err;
+      }
+
+      const rootUri = fileToUri(workspacePath);
+      const client = await clientManager.getClientForLanguage(lang, { workspacePath, rootUri });
+      if (!client) return { content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.LSP_SERVER_UNAVAILABLE, `No LSP server for: ${lang}`), null, 2) }] };
+
+      const { uri } = await ensureOpen(client, resolvedPath, lang);
+
+      const caps = client.getCapabilities();
+      if (!caps.implementationProvider) {
+        return { content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.IMPLEMENTATION_NOT_SUPPORTED, "implementationProvider not supported"), null, 2) }] };
+      }
+
+      try {
+        const result = await getImplementationAt(client, uri, position, workspacePath, maxResults);
+        return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+      } catch (err: unknown) {
+        return { content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.LSP_REQUEST_FAILED, String(err)), null, 2) }] };
+      }
+    }
+  );
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // V3: Signature Help & Completion
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  server.tool(
+    "lsp_signature_help",
+    "Return function/method call signature information at a position. Maps to textDocument/signatureHelp. Useful for checking wrong arguments, missing parameters, incorrect overloads.",
+    SignatureHelpInputSchema.shape,
+    async (args) => {
+      const { filePath, position } = args;
+      const { workspacePath } = ctx;
+
+      let resolvedPath: string;
+      try { resolvedPath = await safeResolve(workspacePath, filePath); } catch {
+        return { content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.PATH_OUTSIDE_WORKSPACE, `Path is outside workspace: ${filePath}`), null, 2) }] };
+      }
+
+      const ext = extname(resolvedPath);
+      const lang = routeLanguage(ext);
+      if (!lang) return { content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.UNSUPPORTED_LANGUAGE, `No LSP server registered for: ${ext}`), null, 2) }] };
+
+      try { await stat(resolvedPath); } catch (err: unknown) {
+        if (err instanceof Error && (err as NodeJS.ErrnoException).code === "ENOENT") {
+          return { content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.FILE_NOT_FOUND, `File not found: ${resolvedPath}`), null, 2) }] };
+        }
+        throw err;
+      }
+
+      const rootUri = fileToUri(workspacePath);
+      const client = await clientManager.getClientForLanguage(lang, { workspacePath, rootUri });
+      if (!client) return { content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.LSP_SERVER_UNAVAILABLE, `No LSP server for: ${lang}`), null, 2) }] };
+
+      const { uri } = await ensureOpen(client, resolvedPath, lang);
+
+      const caps = client.getCapabilities();
+      if (!caps.signatureHelpProvider) {
+        return { content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.SIGNATURE_HELP_NOT_SUPPORTED, "signatureHelpProvider not supported"), null, 2) }] };
+      }
+
+      try {
+        const result = await getSignatureHelp(client, uri, position, resolvedPath);
+        return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+      } catch (err: unknown) {
+        return { content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.LSP_REQUEST_FAILED, String(err)), null, 2) }] };
+      }
+    }
+  );
+
+  server.tool(
+    "lsp_completion",
+    "Return constrained completion candidates at a position without applying them. Maps to textDocument/completion. Read-only — never applies insertText or additionalTextEdits.",
+    CompletionInputSchema.shape,
+    async (args) => {
+      const { filePath, position, maxResults, includeDocumentation, includeInsertText } = args;
+      const { workspacePath } = ctx;
+
+      let resolvedPath: string;
+      try { resolvedPath = await safeResolve(workspacePath, filePath); } catch {
+        return { content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.PATH_OUTSIDE_WORKSPACE, `Path is outside workspace: ${filePath}`), null, 2) }] };
+      }
+
+      const ext = extname(resolvedPath);
+      const lang = routeLanguage(ext);
+      if (!lang) return { content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.UNSUPPORTED_LANGUAGE, `No LSP server registered for: ${ext}`), null, 2) }] };
+
+      try { await stat(resolvedPath); } catch (err: unknown) {
+        if (err instanceof Error && (err as NodeJS.ErrnoException).code === "ENOENT") {
+          return { content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.FILE_NOT_FOUND, `File not found: ${resolvedPath}`), null, 2) }] };
+        }
+        throw err;
+      }
+
+      const rootUri = fileToUri(workspacePath);
+      const client = await clientManager.getClientForLanguage(lang, { workspacePath, rootUri });
+      if (!client) return { content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.LSP_SERVER_UNAVAILABLE, `No LSP server for: ${lang}`), null, 2) }] };
+
+      const { uri } = await ensureOpen(client, resolvedPath, lang);
+
+      const caps = client.getCapabilities();
+      if (!caps.completionProvider) {
+        return { content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.COMPLETION_NOT_SUPPORTED, "completionProvider not supported"), null, 2) }] };
+      }
+
+      try {
+        const result = await getCompletion(client, uri, position, { maxResults, includeDocumentation, includeInsertText });
+        return { content: [{ type: "text" as const, text: JSON.stringify({ ...result, filePath: resolvedPath, position }, null, 2) }] };
+      } catch (err: unknown) {
+        return { content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.LSP_REQUEST_FAILED, String(err)), null, 2) }] };
+      }
+    }
+  );
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // V3: Call Hierarchy
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  server.tool(
+    "lsp_prepare_call_hierarchy",
+    "Prepare call hierarchy items for a symbol. Returns cached opaque IDs used by lsp_incoming_calls and lsp_outgoing_calls. Maps to textDocument/prepareCallHierarchy.",
+    PrepareCallHierarchyInputSchema.shape,
+    async (args) => {
+      const { filePath, position, maxItems } = args;
+      const { workspacePath } = ctx;
+
+      let resolvedPath: string;
+      try { resolvedPath = await safeResolve(workspacePath, filePath); } catch {
+        return { content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.PATH_OUTSIDE_WORKSPACE, `Path is outside workspace: ${filePath}`), null, 2) }] };
+      }
+
+      const ext = extname(resolvedPath);
+      const lang = routeLanguage(ext);
+      if (!lang) return { content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.UNSUPPORTED_LANGUAGE, `No LSP server registered for: ${ext}`), null, 2) }] };
+
+      try { await stat(resolvedPath); } catch (err: unknown) {
+        if (err instanceof Error && (err as NodeJS.ErrnoException).code === "ENOENT") {
+          return { content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.FILE_NOT_FOUND, `File not found: ${resolvedPath}`), null, 2) }] };
+        }
+        throw err;
+      }
+
+      const rootUri = fileToUri(workspacePath);
+      const client = await clientManager.getClientForLanguage(lang, { workspacePath, rootUri });
+      if (!client) return { content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.LSP_SERVER_UNAVAILABLE, `No LSP server for: ${lang}`), null, 2) }] };
+
+      const { uri } = await ensureOpen(client, resolvedPath, lang);
+
+      const caps = client.getCapabilities();
+      if (!caps.callHierarchyProvider) {
+        return { content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.CALL_HIERARCHY_NOT_SUPPORTED, "callHierarchyProvider not supported"), null, 2) }] };
+      }
+
+      try {
+        const result = await prepareCallHierarchy(client, uri, position, workspacePath, lang, maxItems);
+        return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+      } catch (err: unknown) {
+        return { content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.LSP_REQUEST_FAILED, String(err)), null, 2) }] };
+      }
+    }
+  );
+
+  server.tool(
+    "lsp_incoming_calls",
+    "Find callers of a function or method using a cached call hierarchy item ID. Maps to callHierarchy/incomingCalls.",
+    IncomingCallsInputSchema.shape,
+    async (args) => {
+      const { itemId, maxResults } = args;
+      const { workspacePath } = ctx;
+
+      // Look up cached item to get the language for client routing
+      const cached = callHierarchyCache.get(itemId);
+      if (cached === "not_found") {
+        return { content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.CALL_HIERARCHY_ITEM_NOT_FOUND, "Call hierarchy item not found"), null, 2) }] };
+      }
+      if (cached === "expired") {
+        return { content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.CALL_HIERARCHY_ITEM_EXPIRED, "Call hierarchy item expired"), null, 2) }] };
+      }
+
+      const rootUri = fileToUri(workspacePath);
+      const client = await clientManager.getClientForLanguage(cached.language, { workspacePath, rootUri });
+      if (!client) return { content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.LSP_SERVER_UNAVAILABLE, `No LSP server for: ${cached.language}`), null, 2) }] };
+
+      const caps = client.getCapabilities();
+      if (!caps.callHierarchyProvider) {
+        return { content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.CALL_HIERARCHY_NOT_SUPPORTED, "callHierarchyProvider not supported"), null, 2) }] };
+      }
+
+      try {
+        const result = await getIncomingCalls(client, itemId, workspacePath, cached.language, maxResults);
+        if ("error" in result) {
+          return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+        }
+        return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+      } catch (err: unknown) {
+        return { content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.LSP_REQUEST_FAILED, String(err)), null, 2) }] };
+      }
+    }
+  );
+
+  server.tool(
+    "lsp_outgoing_calls",
+    "Find functions/methods called by a function or method using a cached call hierarchy item ID. Maps to callHierarchy/outgoingCalls.",
+    OutgoingCallsInputSchema.shape,
+    async (args) => {
+      const { itemId, maxResults } = args;
+      const { workspacePath } = ctx;
+
+      const cached = callHierarchyCache.get(itemId);
+      if (cached === "not_found") {
+        return { content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.CALL_HIERARCHY_ITEM_NOT_FOUND, "Call hierarchy item not found"), null, 2) }] };
+      }
+      if (cached === "expired") {
+        return { content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.CALL_HIERARCHY_ITEM_EXPIRED, "Call hierarchy item expired"), null, 2) }] };
+      }
+
+      const rootUri = fileToUri(workspacePath);
+      const client = await clientManager.getClientForLanguage(cached.language, { workspacePath, rootUri });
+      if (!client) return { content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.LSP_SERVER_UNAVAILABLE, `No LSP server for: ${cached.language}`), null, 2) }] };
+
+      const caps = client.getCapabilities();
+      if (!caps.callHierarchyProvider) {
+        return { content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.CALL_HIERARCHY_NOT_SUPPORTED, "callHierarchyProvider not supported"), null, 2) }] };
+      }
+
+      try {
+        const result = await getOutgoingCalls(client, itemId, workspacePath, cached.language, maxResults);
+        if ("error" in result) {
+          return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+        }
+        return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+      } catch (err: unknown) {
+        return { content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.LSP_REQUEST_FAILED, String(err)), null, 2) }] };
+      }
+    }
+  );
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // V3: Type Hierarchy
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  server.tool(
+    "lsp_prepare_type_hierarchy",
+    "Prepare type hierarchy items for a class, interface, trait, or type. Returns cached opaque IDs used by lsp_supertypes and lsp_subtypes. Maps to textDocument/prepareTypeHierarchy.",
+    PrepareTypeHierarchyInputSchema.shape,
+    async (args) => {
+      const { filePath, position, maxItems } = args;
+      const { workspacePath } = ctx;
+
+      let resolvedPath: string;
+      try { resolvedPath = await safeResolve(workspacePath, filePath); } catch {
+        return { content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.PATH_OUTSIDE_WORKSPACE, `Path is outside workspace: ${filePath}`), null, 2) }] };
+      }
+
+      const ext = extname(resolvedPath);
+      const lang = routeLanguage(ext);
+      if (!lang) return { content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.UNSUPPORTED_LANGUAGE, `No LSP server registered for: ${ext}`), null, 2) }] };
+
+      try { await stat(resolvedPath); } catch (err: unknown) {
+        if (err instanceof Error && (err as NodeJS.ErrnoException).code === "ENOENT") {
+          return { content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.FILE_NOT_FOUND, `File not found: ${resolvedPath}`), null, 2) }] };
+        }
+        throw err;
+      }
+
+      const rootUri = fileToUri(workspacePath);
+      const client = await clientManager.getClientForLanguage(lang, { workspacePath, rootUri });
+      if (!client) return { content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.LSP_SERVER_UNAVAILABLE, `No LSP server for: ${lang}`), null, 2) }] };
+
+      const { uri } = await ensureOpen(client, resolvedPath, lang);
+
+      const caps = client.getCapabilities();
+      if (!caps.typeHierarchyProvider) {
+        return { content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.TYPE_HIERARCHY_NOT_SUPPORTED, "typeHierarchyProvider not supported"), null, 2) }] };
+      }
+
+      try {
+        const result = await prepareTypeHierarchy(client, uri, position, workspacePath, lang, maxItems);
+        return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+      } catch (err: unknown) {
+        return { content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.LSP_REQUEST_FAILED, String(err)), null, 2) }] };
+      }
+    }
+  );
+
+  server.tool(
+    "lsp_supertypes",
+    "Find parent classes, implemented interfaces, extended interfaces, parent traits, or supertypes. Maps to typeHierarchy/supertypes.",
+    TypeHierarchyInputSchema.shape,
+    async (args) => {
+      const { itemId, maxResults } = args;
+      const { workspacePath } = ctx;
+
+      const cached = typeHierarchyCache.get(itemId);
+      if (cached === "not_found") {
+        return { content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.TYPE_HIERARCHY_ITEM_NOT_FOUND, "Type hierarchy item not found"), null, 2) }] };
+      }
+      if (cached === "expired") {
+        return { content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.TYPE_HIERARCHY_ITEM_EXPIRED, "Type hierarchy item expired"), null, 2) }] };
+      }
+
+      const rootUri = fileToUri(workspacePath);
+      const client = await clientManager.getClientForLanguage(cached.language, { workspacePath, rootUri });
+      if (!client) return { content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.LSP_SERVER_UNAVAILABLE, `No LSP server for: ${cached.language}`), null, 2) }] };
+
+      const caps = client.getCapabilities();
+      if (!caps.typeHierarchyProvider) {
+        return { content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.TYPE_HIERARCHY_NOT_SUPPORTED, "typeHierarchyProvider not supported"), null, 2) }] };
+      }
+
+      try {
+        const result = await getSupertypes(client, itemId, workspacePath, cached.language, maxResults);
+        if ("error" in result) {
+          return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+        }
+        return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+      } catch (err: unknown) {
+        return { content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.LSP_REQUEST_FAILED, String(err)), null, 2) }] };
+      }
+    }
+  );
+
+  server.tool(
+    "lsp_subtypes",
+    "Find subclasses, implementers, child interfaces, or subtypes. Maps to typeHierarchy/subtypes.",
+    TypeHierarchyInputSchema.shape,
+    async (args) => {
+      const { itemId, maxResults } = args;
+      const { workspacePath } = ctx;
+
+      const cached = typeHierarchyCache.get(itemId);
+      if (cached === "not_found") {
+        return { content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.TYPE_HIERARCHY_ITEM_NOT_FOUND, "Type hierarchy item not found"), null, 2) }] };
+      }
+      if (cached === "expired") {
+        return { content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.TYPE_HIERARCHY_ITEM_EXPIRED, "Type hierarchy item expired"), null, 2) }] };
+      }
+
+      const rootUri = fileToUri(workspacePath);
+      const client = await clientManager.getClientForLanguage(cached.language, { workspacePath, rootUri });
+      if (!client) return { content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.LSP_SERVER_UNAVAILABLE, `No LSP server for: ${cached.language}`), null, 2) }] };
+
+      const caps = client.getCapabilities();
+      if (!caps.typeHierarchyProvider) {
+        return { content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.TYPE_HIERARCHY_NOT_SUPPORTED, "typeHierarchyProvider not supported"), null, 2) }] };
+      }
+
+      try {
+        const result = await getSubtypes(client, itemId, workspacePath, cached.language, maxResults);
+        if ("error" in result) {
+          return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+        }
+        return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+      } catch (err: unknown) {
+        return { content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.LSP_REQUEST_FAILED, String(err)), null, 2) }] };
+      }
+    }
+  );
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // V3: Change Impact (LSP-only composite)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  server.tool(
+    "lsp_analyze_change_impact",
+    "Analyze the likely impact of changing a symbol using LSP-only semantic data. Composes hover, definition, type definition, implementation, references, call hierarchy, and diagnostics. Does NOT call AST tools.",
+    AnalyzeChangeImpactInputSchema.shape,
+    async (args) => {
+      const { workspacePath } = ctx;
+      try {
+        const result = await analyzeChangeImpact(clientManager, workspacePath, args as any);
+        if ("error" in result) {
+          return { content: [{ type: "text" as const, text: JSON.stringify(result.error, null, 2) }] };
+        }
+        return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+      } catch (err: unknown) {
+        return { content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.LSP_REQUEST_FAILED, String(err)), null, 2) }] };
+      }
+    }
+  );
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // V3: Diagnostic Intelligence (LSP-only composites)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  server.tool(
+    "lsp_fix_diagnostic_candidates",
+    "Return LSP-based fix candidates for a diagnostic. Composes code actions, hover, definition, and signature help. Does NOT use AST context.",
+    FixDiagnosticCandidatesInputSchema.shape,
+    async (args) => {
+      const { workspacePath } = ctx;
+      try {
+        const result = await fixDiagnosticCandidates(clientManager, workspacePath, args as any);
+        if ("error" in result) {
+          return { content: [{ type: "text" as const, text: JSON.stringify(result.error, null, 2) }] };
+        }
+        return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+      } catch (err: unknown) {
+        return { content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.LSP_REQUEST_FAILED, String(err)), null, 2) }] };
+      }
+    }
+  );
+
+  server.tool(
+    "lsp_explain_diagnostics",
+    "Explain diagnostics using LSP-only information. Groups diagnostics by root cause and proposes fix order. Does NOT use AST extraction.",
+    ExplainDiagnosticsInputSchema.shape,
+    async (args) => {
+      try {
+        const result = explainDiagnostics({
+          filePath: args.filePath,
+          workspaceWide: args.workspaceWide,
+          maxDiagnostics: args.maxDiagnostics,
+        });
+        return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+      } catch (err: unknown) {
+        return { content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.LSP_REQUEST_FAILED, String(err)), null, 2) }] };
+      }
     }
   );
 
