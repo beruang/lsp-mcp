@@ -52,6 +52,8 @@ import {
   ReadinessInputSchema,
   LivenessInputSchema,
   RawRequestInputSchema,
+  ListWorkspacesInputSchema,
+  WorkspaceStatusInputSchema,
 } from "./schemas.js";
 import { formatDocument, formatRange } from "../formatting/formatPreview.js";
 import { waitForDiagnostics } from "../diagnostics/waitForDiagnostics.js";
@@ -90,6 +92,7 @@ import { registerCache, getCacheStatus, clearCache, clearAllCaches } from "../ca
 import { checkReadiness } from "../ops/readiness.js";
 import { checkLiveness } from "../ops/liveness.js";
 import { rawRequest } from "../debug/rawRequest.js";
+import { listWorkspaces, workspaceStatus } from "../ops/workspaceStatus.js";
 
 /**
  * Shared context passed to every tool registration.
@@ -2747,6 +2750,38 @@ export function registerAllTools(
         else if (msg.includes("method_denied")) code = ErrorCodes.METHOD_DENIED;
         else if (msg.includes("not_found")) code = ErrorCodes.SERVER_NOT_FOUND;
         return { content: [{ type: "text" as const, text: JSON.stringify(toolError(code, msg), null, 2) }] };
+      }
+    }
+  );
+
+  // ── V4: lsp_list_workspaces (optional multi-workspace foundation) ─────────────
+
+  server.tool(
+    "lsp_list_workspaces",
+    "Return the list of known workspaces. Currently single-workspace (foundation for future multi-root).",
+    ListWorkspacesInputSchema.shape,
+    async () => {
+      try {
+        const workspaces = listWorkspaces(clientManager);
+        return { content: [{ type: "text" as const, text: JSON.stringify(workspaces, null, 2) }] };
+      } catch (err: unknown) {
+        return { content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.LSP_REQUEST_FAILED, String(err)), null, 2) }] };
+      }
+    }
+  );
+
+  // ── V4: lsp_workspace_status (optional multi-workspace foundation) ─────────────
+
+  server.tool(
+    "lsp_workspace_status",
+    "Return status for a specific workspace including its language servers.",
+    WorkspaceStatusInputSchema.shape,
+    async (args) => {
+      try {
+        const result = workspaceStatus(clientManager, args.workspacePath);
+        return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+      } catch (err: unknown) {
+        return { content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.LSP_REQUEST_FAILED, String(err)), null, 2) }] };
       }
     }
   );

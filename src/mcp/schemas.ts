@@ -368,3 +368,11 @@ export const RawRequestInputSchema = z.object({
   method: z.string().describe("LSP method name (e.g., textDocument/hover)."),
   params: z.record(z.string(), z.unknown()).optional().describe("LSP request parameters."),
 });
+
+// ── V4: Multi-Workspace Foundation (optional) ───────────────────────────────
+
+export const ListWorkspacesInputSchema = z.object({});
+
+export const WorkspaceStatusInputSchema = z.object({
+  workspacePath: z.string().describe("Absolute path to the workspace to query."),
+});
