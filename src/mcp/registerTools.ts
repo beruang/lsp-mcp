@@ -45,6 +45,12 @@ import {
   SyncDocumentInputSchema,
   SaveDocumentInputSchema,
   ListOpenDocumentsInputSchema,
+  RequestLogInputSchema,
+  ClearRequestLogInputSchema,
+  CacheStatusInputSchema,
+  ClearCachesInputSchema,
+  ReadinessInputSchema,
+  LivenessInputSchema,
 } from "./schemas.js";
 import { formatDocument, formatRange } from "../formatting/formatPreview.js";
 import { waitForDiagnostics } from "../diagnostics/waitForDiagnostics.js";
@@ -78,6 +84,10 @@ import { syncDocument } from "../documents/syncDocument.js";
 import { saveDocument } from "../documents/saveDocument.js";
 import { listOpenDocuments } from "../documents/listOpenDocuments.js";
 import { execFile } from "child_process";
+import { getRequestLog, clearRequestLog } from "../observability/requestLog.js";
+import { registerCache, getCacheStatus, clearCache, clearAllCaches } from "../cache/cacheStatus.js";
+import { checkReadiness } from "../ops/readiness.js";
+import { checkLiveness } from "../ops/liveness.js";
 
 /**
  * Shared context passed to every tool registration.
@@ -101,6 +111,12 @@ export function registerAllTools(
   server: McpServer,
   ctx: ToolContext
 ): void {
+  // Register existing caches for V4 cache management tools
+  registerCache("code-actions", "Code action results cache", () => codeActionCache.size(), () => codeActionCache.clear());
+  registerCache("diagnostic-snapshots", "Diagnostic snapshot store", () => snapshotStore.size(), () => snapshotStore.clear());
+  registerCache("call-hierarchy", "Call hierarchy cache", () => callHierarchyCache.size(), () => callHierarchyCache.clear());
+  registerCache("type-hierarchy", "Type hierarchy cache", () => typeHierarchyCache.size(), () => typeHierarchyCache.clear());
+
   // Health check tool — reports server status and available capabilities.
   server.tool(
     "lsp_health_check",
@@ -2578,6 +2594,126 @@ export function registerAllTools(
       try {
         const docs = listOpenDocuments(args.language);
         return { content: [{ type: "text" as const, text: JSON.stringify(docs, null, 2) }] };
+      } catch (err: unknown) {
+        return { content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.LSP_REQUEST_FAILED, String(err)), null, 2) }] };
+      }
+    }
+  );
+
+  // ── V4: lsp_request_log ──────────────────────────────────────────────────────
+
+  server.tool(
+    "lsp_request_log",
+    "Return LSP request log entries with optional filtering by language, method, status, and time.",
+    RequestLogInputSchema.shape,
+    async (args) => {
+      try {
+        const entries = getRequestLog({
+          language: args.language,
+          method: args.method,
+          status: args.status,
+          limit: args.limit,
+          since: args.since,
+        });
+        return { content: [{ type: "text" as const, text: JSON.stringify(entries, null, 2) }] };
+      } catch (err: unknown) {
+        return { content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.LSP_REQUEST_FAILED, String(err)), null, 2) }] };
+      }
+    }
+  );
+
+  // ── V4: lsp_clear_request_log ─────────────────────────────────────────────────
+
+  server.tool(
+    "lsp_clear_request_log",
+    "Clear request log entries. Omit all filters to clear everything.",
+    ClearRequestLogInputSchema.shape,
+    async (args) => {
+      try {
+        const cleared = clearRequestLog({
+          language: args.language,
+          method: args.method,
+          status: args.status,
+        });
+        return { content: [{ type: "text" as const, text: JSON.stringify({ cleared }, null, 2) }] };
+      } catch (err: unknown) {
+        return { content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.LSP_REQUEST_FAILED, String(err)), null, 2) }] };
+      }
+    }
+  );
+
+  // ── V4: lsp_cache_status ──────────────────────────────────────────────────────
+
+  server.tool(
+    "lsp_cache_status",
+    "Return entry counts for all registered caches.",
+    CacheStatusInputSchema.shape,
+    async () => {
+      try {
+        const caches = getCacheStatus();
+        const totalEntries = caches.reduce((sum, c) => sum + c.entryCount, 0);
+        return { content: [{ type: "text" as const, text: JSON.stringify({ caches, totalEntries }, null, 2) }] };
+      } catch (err: unknown) {
+        return { content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.LSP_REQUEST_FAILED, String(err)), null, 2) }] };
+      }
+    }
+  );
+
+  // ── V4: lsp_clear_caches ──────────────────────────────────────────────────────
+
+  server.tool(
+    "lsp_clear_caches",
+    "Clear specified caches by name. Omit caches to clear all.",
+    ClearCachesInputSchema.shape,
+    async (args) => {
+      try {
+        let cleared: string[] = [];
+        const notFound: string[] = [];
+        if (args.caches && args.caches.length > 0) {
+          for (const name of args.caches) {
+            if (clearCache(name)) {
+              cleared.push(name);
+            } else {
+              notFound.push(name);
+            }
+          }
+        } else {
+          cleared = clearAllCaches();
+        }
+        return { content: [{ type: "text" as const, text: JSON.stringify({ cleared, notFound: notFound.length > 0 ? notFound : undefined }, null, 2) }] };
+      } catch (err: unknown) {
+        return { content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.LSP_REQUEST_FAILED, String(err)), null, 2) }] };
+      }
+    }
+  );
+
+  // ── V4: lsp_readiness ─────────────────────────────────────────────────────────
+
+  server.tool(
+    "lsp_readiness",
+    "Check if the MCP LSP server is ready to handle agent work. Optionally initializes language servers.",
+    ReadinessInputSchema.shape,
+    async (args) => {
+      try {
+        const rootUri = fileToUri(ctx.workspacePath);
+        const result = await checkReadiness(ctx.workspacePath, clientManager, args.initServers, rootUri);
+        return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+      } catch (err: unknown) {
+        return { content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.LSP_REQUEST_FAILED, String(err)), null, 2) }] };
+      }
+    }
+  );
+
+  // ── V4: lsp_liveness ──────────────────────────────────────────────────────────
+
+  server.tool(
+    "lsp_liveness",
+    "Fast liveness check. Does not start any language servers. Returns uptime and optional memory stats.",
+    LivenessInputSchema.shape,
+    async (args) => {
+      try {
+        const result = checkLiveness(args.includeMemory);
+        return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
       } catch (err: unknown) {
         return { content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.LSP_REQUEST_FAILED, String(err)), null, 2) }] };
       }

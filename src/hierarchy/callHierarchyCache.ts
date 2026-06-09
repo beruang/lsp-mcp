@@ -63,6 +63,14 @@ export class CallHierarchyCache {
     }
   }
 
+  size(): number {
+    return this.items.size;
+  }
+
+  clear(): void {
+    this.items.clear();
+  }
+
   dispose(): void {
     clearInterval(this.cleanupTimer);
     this.items.clear();

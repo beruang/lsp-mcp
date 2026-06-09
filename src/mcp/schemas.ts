@@ -325,3 +325,38 @@ export const SaveDocumentInputSchema = z.object({
 export const ListOpenDocumentsInputSchema = z.object({
   language: z.string().optional().describe("Filter to a specific language. Omit for all."),
 });
+
+// ── V4: Observability ───────────────────────────────────────────────────────
+
+export const RequestLogInputSchema = z.object({
+  language: z.string().optional().describe("Filter by language."),
+  method: z.string().optional().describe("Filter by LSP method name."),
+  status: z.enum(["ok", "error", "timeout", "cancelled"]).optional().describe("Filter by request status."),
+  limit: z.number().int().positive().default(50).describe("Maximum entries to return (most recent)."),
+  since: z.string().optional().describe("ISO timestamp — only return entries after this time."),
+});
+
+export const ClearRequestLogInputSchema = z.object({
+  language: z.string().optional().describe("Clear only entries for this language."),
+  method: z.string().optional().describe("Clear only entries for this method."),
+  status: z.enum(["ok", "error", "timeout", "cancelled"]).optional().describe("Clear only entries with this status."),
+});
+
+// ── V4: Cache Management ────────────────────────────────────────────────────
+
+export const CacheStatusInputSchema = z.object({});
+
+export const ClearCachesInputSchema = z.object({
+  caches: z.array(z.string()).optional().describe("Cache names to clear. Omit or empty to clear all."),
+});
+
+// ── V4: Health ──────────────────────────────────────────────────────────────
+
+export const ReadinessInputSchema = z.object({
+  initServers: z.boolean().default(false).describe("Initialize configured language servers if not already running."),
+  language: z.string().optional().describe("Check a specific language server only."),
+});
+
+export const LivenessInputSchema = z.object({
+  includeMemory: z.boolean().default(false).describe("Include memory usage statistics."),
+});

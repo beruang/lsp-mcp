@@ -6,6 +6,7 @@ import { withTimeout } from "../utils/asyncTimeout.js";
 import { diagnosticsCache } from "./diagnosticsCache.js";
 import { diagnosticFromLsp, uriToRel } from "./normalize.js";
 import { LspState } from "./LspState.js";
+import { requestTracker } from "../observability/requestTracker.js";
 
 export interface SpawnOptions {
   command: string;
@@ -13,6 +14,7 @@ export interface SpawnOptions {
   workspacePath: string;
   rootUri: string;
   startupTimeoutMs?: number;
+  language?: string;
 }
 
 export class LspClient {
@@ -21,13 +23,15 @@ export class LspClient {
   private caps: ServerCapabilitiesSnapshot;
   private workspacePath: string;
   readonly state: LspState;
+  readonly language: string;
 
-  private constructor(proc: ChildProcess, connection: MessageConnection, caps: ServerCapabilitiesSnapshot, workspacePath: string, state: LspState) {
+  private constructor(proc: ChildProcess, connection: MessageConnection, caps: ServerCapabilitiesSnapshot, workspacePath: string, state: LspState, language: string) {
     this.proc = proc;
     this.connection = connection;
     this.caps = caps;
     this.workspacePath = workspacePath;
     this.state = state;
+    this.language = language;
   }
 
   static async spawn(opts: SpawnOptions): Promise<LspClient> {
@@ -139,15 +143,29 @@ export class LspClient {
       console.error(`[lsp:${proc.pid}] publishDiagnostics: ${params.uri} (${normalized.length} diagnostics)`);
     });
 
-    return new LspClient(proc, connection, caps, opts.workspacePath, state);
+    return new LspClient(proc, connection, caps, opts.workspacePath, state, opts.language ?? opts.command);
   }
 
   async request<R>(method: string, params: unknown, timeoutMs?: number): Promise<R> {
-    return withTimeout(
-      this.connection.sendRequest(method, params) as Promise<R>,
-      timeoutMs ?? 10_000,
-      method
-    );
+    const entry = requestTracker.start(this.language, method);
+    try {
+      const result = await withTimeout(
+        this.connection.sendRequest(method, params) as Promise<R>,
+        timeoutMs ?? 10_000,
+        method
+      );
+      // Count results for arrays
+      const count = Array.isArray(result) ? (result as unknown[]).length : undefined;
+      requestTracker.complete(entry.id, count);
+      return result;
+    } catch (e: unknown) {
+      if (e instanceof Error && e.message.includes("timed out")) {
+        requestTracker.timeout(entry.id);
+      } else {
+        requestTracker.error(entry.id, "lsp_request_failed", String(e));
+      }
+      throw e;
+    }
   }
 
   notify(method: string, params: unknown): void {

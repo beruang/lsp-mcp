@@ -31,6 +31,7 @@ export class LspClientManager {
       args: entry.args,
       workspacePath: opts.workspacePath,
       rootUri: opts.rootUri,
+      language: lang,
     }) as Promise<LspClient>;
 
     // Track resolved client
