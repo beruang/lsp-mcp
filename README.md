@@ -9,9 +9,7 @@
 
 </div>
 
-A Model Context Protocol (MCP) stdio server that wraps language servers to expose a safe, read-oriented code-intelligence tool surface for coding agents. Supports TypeScript, JavaScript, Python, Go, and Rust.
-
-**59 tools across four generations — semantic navigation, safe refactoring, deep understanding, and production operations.**
+A Model Context Protocol (MCP) stdio server that wraps language servers to expose a safe, read-oriented code-intelligence tool surface for coding agents. Supports TypeScript, JavaScript, Python, Go, and Rust — **59 tools** across navigation, diagnostics, refactoring, deep understanding, hierarchy, lifecycle, and operations.
 
 ---
 
@@ -131,7 +129,7 @@ src/
 │   ├── documentStore.ts              # didOpen/didChange state tracking
 │   └── normalize.ts                  # LSP → normalized shape converters
 ├── mcp/
-│   ├── registerTools.ts              # All 56 MCP tool registrations
+│   ├── registerTools.ts              # All 59 MCP tool registrations
 │   ├── toolErrors.ts                 # Structured error envelope
 │   └── schemas.ts                    # Zod schemas
 ├── navigation/                       # V3: declaration, typeDef, implementation, signatureHelp, completion
@@ -179,62 +177,70 @@ Every tool returns either a **success payload** or a **structured error**:
 }
 ```
 
-### V1 — Semantic Navigation (10 tools)
+### Navigation & Discovery
+
+| Tool | LSP Method | Description |
+|------|-----------|-------------|
+| `lsp_hover` | `textDocument/hover` | Type information and documentation at cursor |
+| `lsp_definition` | `textDocument/definition` | Go-to-definition locations |
+| `lsp_references` | `textDocument/references` | Find all references to a symbol |
+| `lsp_document_symbols` | `textDocument/documentSymbol` | Symbol outline for a file |
+| `lsp_workspace_symbols` | `workspace/symbol` | Workspace-wide symbol search |
+| `lsp_declaration` | `textDocument/declaration` | Go-to-declaration |
+| `lsp_type_definition` | `textDocument/typeDefinition` | Go-to-type-definition |
+| `lsp_implementation` | `textDocument/implementation` | Find implementations |
+
+### Diagnostics
 
 | Tool | Description |
 |------|-------------|
-| `lsp_health_check` | Server health and LSP capabilities |
-| `lsp_hover` | `textDocument/hover` |
-| `lsp_definition` | `textDocument/definition` |
-| `lsp_references` | `textDocument/references` |
-| `lsp_document_symbols` | `textDocument/documentSymbol` |
-| `lsp_workspace_symbols` | `workspace/symbol` |
-| `lsp_diagnostics` | Cached diagnostics (file or workspace-wide) |
+| `lsp_diagnostics` | Cached diagnostics for a file or workspace-wide |
 | `lsp_diagnostics_summary` | Grouped diagnostics with root-cause heuristic |
-| `lsp_rename_preview` | Preview rename via `WorkspaceEdit` + unified diff |
-| `lsp_inspect_symbol` | Composite: hover + definitions + refs + risk hints |
+| `lsp_wait_for_diagnostics` | Wait for fresh diagnostics after a change |
+| `lsp_snapshot_diagnostics` | Save a named diagnostic snapshot for comparison |
+| `lsp_compare_diagnostics` | Diff two diagnostic snapshots |
+| `lsp_explain_diagnostics` | Cluster diagnostics and identify root causes |
+| `lsp_fix_diagnostic_candidates` | Multi-source fix suggestions (hover + code actions + definition) |
 
-### V2 — Safe Refactoring Preview (11 tools)
+### Refactoring & Editing
 
-| Tool | Description |
-|------|-------------|
-| `lsp_prepare_rename` | `textDocument/prepareRename` |
-| `lsp_code_actions_preview` | `textDocument/codeAction` with diff |
-| `lsp_resolve_code_action` | Resolve cached code action |
-| `lsp_format_preview` | `textDocument/formatting` with diff |
-| `lsp_range_format_preview` | `textDocument/rangeFormatting` with diff |
-| `lsp_organize_imports_preview` | `textDocument/organizeImports` with diff |
-| `lsp_wait_for_diagnostics` | Wait for fresh diagnostics |
-| `lsp_snapshot_diagnostics` | Named diagnostic snapshot |
-| `lsp_compare_diagnostics` | Compare two diagnostic snapshots |
-| `lsp_workspace_edit_preview` | Preview any `WorkspaceEdit` + diff |
-| `lsp_validate_workspace_edit` | Validate `WorkspaceEdit` safety |
+| Tool | LSP Method | Description |
+|------|-----------|-------------|
+| `lsp_rename_preview` | `textDocument/rename` | Preview rename via `WorkspaceEdit` + unified diff |
+| `lsp_prepare_rename` | `textDocument/prepareRename` | Check if rename is valid at a position |
+| `lsp_code_actions_preview` | `textDocument/codeAction` | Preview code actions with diffs |
+| `lsp_resolve_code_action` | `codeAction/resolve` | Resolve a cached code action |
+| `lsp_format_preview` | `textDocument/formatting` | Preview formatting with diff |
+| `lsp_range_format_preview` | `textDocument/rangeFormatting` | Preview range formatting with diff |
+| `lsp_organize_imports_preview` | `textDocument/organizeImports` | Preview import organization with diff |
+| `lsp_workspace_edit_preview` | — | Preview any `WorkspaceEdit` + unified diff |
+| `lsp_validate_workspace_edit` | — | Validate `WorkspaceEdit` safety |
 
-### V3 — Deep Understanding (14 tools)
+### Deep Understanding
 
-| Tool | Description |
-|------|-------------|
-| `lsp_declaration` | `textDocument/declaration` |
-| `lsp_type_definition` | `textDocument/typeDefinition` |
-| `lsp_implementation` | `textDocument/implementation` |
-| `lsp_signature_help` | `textDocument/signatureHelp` |
-| `lsp_completion` | `textDocument/completion` |
-| `lsp_prepare_call_hierarchy` | `textDocument/prepareCallHierarchy` |
-| `lsp_incoming_calls` | `callHierarchy/incomingCalls` |
-| `lsp_outgoing_calls` | `callHierarchy/outgoingCalls` |
-| `lsp_prepare_type_hierarchy` | `textDocument/prepareTypeHierarchy` |
-| `lsp_supertypes` | `typeHierarchy/supertypes` |
-| `lsp_subtypes` | `typeHierarchy/subtypes` |
-| `lsp_symbol_context` | Surrounding symbols at position |
-| `lsp_enclosing_symbol` | Innermost enclosing symbol |
-| `lsp_file_outline` | File-level symbol outline |
-| `lsp_analyze_change_impact` | Cross-file impact analysis |
-| `lsp_fix_diagnostic_candidates` | Multi-source fix suggestions |
-| `lsp_explain_diagnostics` | Root-cause clustering |
+| Tool | LSP Method | Description |
+|------|-----------|-------------|
+| `lsp_signature_help` | `textDocument/signatureHelp` | Function signature at call site |
+| `lsp_completion` | `textDocument/completion` | Code completion suggestions |
+| `lsp_inspect_symbol` | composite | Aggregate: hover + definition + refs + risk hints |
+| `lsp_symbol_context` | composite | Surrounding symbols at a position |
+| `lsp_enclosing_symbol` | composite | Innermost enclosing symbol |
+| `lsp_file_outline` | composite | File-level symbol outline |
 
-### V4 — Production Operations (21 tools)
+### Hierarchy & Impact
 
-**Server Lifecycle:**
+| Tool | LSP Method | Description |
+|------|-----------|-------------|
+| `lsp_prepare_call_hierarchy` | `textDocument/prepareCallHierarchy` | Prepare call hierarchy for a symbol |
+| `lsp_incoming_calls` | `callHierarchy/incomingCalls` | Who calls this symbol |
+| `lsp_outgoing_calls` | `callHierarchy/outgoingCalls` | What this symbol calls |
+| `lsp_prepare_type_hierarchy` | `textDocument/prepareTypeHierarchy` | Prepare type hierarchy |
+| `lsp_supertypes` | `typeHierarchy/supertypes` | Super-types of a symbol |
+| `lsp_subtypes` | `typeHierarchy/subtypes` | Sub-types of a symbol |
+| `lsp_analyze_change_impact` | composite | Cross-file impact analysis for a proposed change |
+
+### Server Lifecycle
+
 | Tool | Description |
 |------|-------------|
 | `lsp_server_status` | Runtime status for all configured language servers |
@@ -243,49 +249,52 @@ Every tool returns either a **success payload** or a **structured error**:
 | `lsp_list_supported_languages` | Configured languages, extensions, commands, binary availability |
 | `lsp_get_capabilities` | Normalized LSP capabilities per language |
 
-**Document Lifecycle:**
+### Document Lifecycle
+
+| Tool | LSP Method | Description |
+|------|-----------|-------------|
+| `lsp_open_document` | `textDocument/didOpen` | Register a document with the LSP server |
+| `lsp_close_document` | `textDocument/didClose` | Unregister a document |
+| `lsp_sync_document` | `textDocument/didChange` | Notify LSP of content changes |
+| `lsp_save_document` | `textDocument/didSave` | Notify LSP of a save |
+| `lsp_list_open_documents` | — | All currently tracked open documents |
+
+### Health
+
 | Tool | Description |
 |------|-------------|
-| `lsp_open_document` | `textDocument/didOpen` |
-| `lsp_close_document` | `textDocument/didClose` |
-| `lsp_sync_document` | `textDocument/didChange` (auto-opens if not tracked) |
-| `lsp_save_document` | `textDocument/didSave` notification |
-| `lsp_list_open_documents` | All tracked open documents |
+| `lsp_health_check` | Server health and per-language LSP capabilities |
+| `lsp_readiness` | Workspace + language server availability check |
+| `lsp_liveness` | Fast liveness check + optional memory stats |
 
-**Observability:**
+### Observability & Cache
+
 | Tool | Description |
 |------|-------------|
 | `lsp_request_log` | LSP request history with filtering |
 | `lsp_clear_request_log` | Clear request log entries |
-
-**Cache Management:**
-| Tool | Description |
-|------|-------------|
-| `lsp_cache_status` | Entry counts for all caches |
+| `lsp_cache_status` | Entry counts for all internal caches |
 | `lsp_clear_caches` | Selective or full cache clearing |
 
-**Configuration:**
-| Tool | Description |
-|------|-------------|
-| `lsp_get_config` | Effective config (defaults → env → runtime) |
-| `lsp_update_runtime_config` | In-memory config updates (limits, timeouts, cache, debug) |
+### Configuration
 
-**Health:**
 | Tool | Description |
 |------|-------------|
-| `lsp_readiness` | Workspace + language server availability |
-| `lsp_liveness` | Fast liveness + optional memory stats |
+| `lsp_get_config` | Effective config (defaults → env → runtime overrides) |
+| `lsp_update_runtime_config` | In-memory config updates (limits, timeouts, caches, debug) |
 
-**Debug (disabled by default):**
-| Tool | Description |
-|------|-------------|
-| `lsp_raw_request` | Raw LSP request with method denylist |
+### Debug
 
-**Multi-Workspace Foundation (optional):**
 | Tool | Description |
 |------|-------------|
-| `lsp_list_workspaces` | Known workspaces |
-| `lsp_workspace_status` | Status for a specific workspace |
+| `lsp_raw_request` | Raw LSP request with method denylist (disabled by default) |
+
+### Multi-Workspace
+
+| Tool | Description |
+|------|-------------|
+| `lsp_list_workspaces` | Known workspaces (foundation) |
+| `lsp_workspace_status` | Status for a specific workspace (foundation) |
 
 ---
 
@@ -444,12 +453,12 @@ Use `lsp_sync_document` to notify the LSP of changes, then `lsp_wait_for_diagnos
 
 ## Changelog
 
-| Version | Focus | Tools |
+| Version | Focus | Key Additions |
 |---|---|---|
-| **V4** | Production operations | 21 tools — server lifecycle, document lifecycle, observability, cache, config, health, debug |
-| **V3** | Deep understanding | 17 tools — hierarchy, type, signature, completion, impact analysis |
-| **V2** | Safe refactoring | 11 tools — preview-first editing, diagnostics validation |
-| **V1** | Semantic navigation | 10 tools — hover, definition, references, symbols, diagnostics |
+| **V4** | Production operations | Server lifecycle, document lifecycle, observability, cache, config, health, debug, multi-workspace (21 tools) |
+| **V3** | Deep understanding | Hierarchy (call + type), declaration, type definition, implementation, signature help, completion, impact analysis (17 tools) |
+| **V2** | Safe refactoring | Preview-first editing — rename, code actions, formatting, organize imports, diagnostics snapshots (11 tools) |
+| **V1** | Semantic navigation | Hover, definition, references, symbols, diagnostics, rename preview, inspect (10 tools) |
 
 ---
 
