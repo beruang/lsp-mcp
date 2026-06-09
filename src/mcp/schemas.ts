@@ -296,3 +296,32 @@ export const GetCapabilitiesInputSchema = z.object({
   language: z.string().describe("Language to query capabilities for."),
   startIfNeeded: z.boolean().default(false).describe("Initialize the server if not already running."),
 });
+
+// ── V4: Document Lifecycle ──────────────────────────────────────────────────
+
+export const OpenDocumentInputSchema = z.object({
+  filePath: z.string().describe("Absolute or workspace-relative path to the file."),
+  language: z.string().describe("Language server to use (e.g., typescript, python)."),
+  text: z.string().optional().describe("File content. Reads from disk if omitted."),
+});
+
+export const CloseDocumentInputSchema = z.object({
+  filePath: z.string().describe("Absolute or workspace-relative path to the file."),
+  language: z.string().describe("Language server to use."),
+});
+
+export const SyncDocumentInputSchema = z.object({
+  filePath: z.string().describe("Absolute or workspace-relative path to the file."),
+  language: z.string().describe("Language server to use."),
+  text: z.string().optional().describe("New file content. Reads from disk if omitted."),
+});
+
+export const SaveDocumentInputSchema = z.object({
+  filePath: z.string().describe("Absolute or workspace-relative path to the file."),
+  language: z.string().describe("Language server to use."),
+  text: z.string().optional().describe("Saved file content for LSP notification."),
+});
+
+export const ListOpenDocumentsInputSchema = z.object({
+  language: z.string().optional().describe("Filter to a specific language. Omit for all."),
+});

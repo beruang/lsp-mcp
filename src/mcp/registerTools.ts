@@ -40,6 +40,11 @@ import {
   ShutdownServerInputSchema,
   ListSupportedLanguagesInputSchema,
   GetCapabilitiesInputSchema,
+  OpenDocumentInputSchema,
+  CloseDocumentInputSchema,
+  SyncDocumentInputSchema,
+  SaveDocumentInputSchema,
+  ListOpenDocumentsInputSchema,
 } from "./schemas.js";
 import { formatDocument, formatRange } from "../formatting/formatPreview.js";
 import { waitForDiagnostics } from "../diagnostics/waitForDiagnostics.js";
@@ -67,6 +72,11 @@ import { analyzeChangeImpact } from "../semantic/analyzeChangeImpact.js";
 import { getEffectiveConfig, updateRuntimeConfig } from "../config/runtimeConfig.js";
 import { restartServer } from "../ops/restartServer.js";
 import { shutdownServer } from "../ops/shutdownServer.js";
+import { openDocument } from "../documents/openDocument.js";
+import { closeDocument } from "../documents/closeDocument.js";
+import { syncDocument } from "../documents/syncDocument.js";
+import { saveDocument } from "../documents/saveDocument.js";
+import { listOpenDocuments } from "../documents/listOpenDocuments.js";
 import { execFile } from "child_process";
 
 /**
@@ -2485,6 +2495,89 @@ export function registerAllTools(
             text: JSON.stringify({ initialized: true, capabilities: client.getCapabilities() }, null, 2),
           }],
         };
+      } catch (err: unknown) {
+        return { content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.LSP_REQUEST_FAILED, String(err)), null, 2) }] };
+      }
+    }
+  );
+
+  // ── V4: lsp_open_document ────────────────────────────────────────────────────
+
+  server.tool(
+    "lsp_open_document",
+    "Open a document in the LSP server (textDocument/didOpen). Tracks the document for lifecycle management.",
+    OpenDocumentInputSchema.shape,
+    async (args) => {
+      try {
+        const info = await openDocument(clientManager, args.language, args.filePath, ctx.workspacePath, args.text);
+        return { content: [{ type: "text" as const, text: JSON.stringify(info, null, 2) }] };
+      } catch (err: unknown) {
+        return { content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.LSP_REQUEST_FAILED, String(err)), null, 2) }] };
+      }
+    }
+  );
+
+  // ── V4: lsp_close_document ───────────────────────────────────────────────────
+
+  server.tool(
+    "lsp_close_document",
+    "Close a document in the LSP server (textDocument/didClose) and remove it from tracking.",
+    CloseDocumentInputSchema.shape,
+    async (args) => {
+      try {
+        const closed = closeDocument(clientManager, args.language, args.filePath);
+        return { content: [{ type: "text" as const, text: JSON.stringify({ closed, filePath: args.filePath, language: args.language }, null, 2) }] };
+      } catch (err: unknown) {
+        return { content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.LSP_REQUEST_FAILED, String(err)), null, 2) }] };
+      }
+    }
+  );
+
+  // ── V4: lsp_sync_document ────────────────────────────────────────────────────
+
+  server.tool(
+    "lsp_sync_document",
+    "Sync document content changes to the LSP server (textDocument/didChange). Auto-opens if not already tracked.",
+    SyncDocumentInputSchema.shape,
+    async (args) => {
+      try {
+        const info = await syncDocument(clientManager, args.language, args.filePath, ctx.workspacePath, args.text);
+        return { content: [{ type: "text" as const, text: JSON.stringify(info, null, 2) }] };
+      } catch (err: unknown) {
+        return { content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.LSP_REQUEST_FAILED, String(err)), null, 2) }] };
+      }
+    }
+  );
+
+  // ── V4: lsp_save_document ────────────────────────────────────────────────────
+
+  server.tool(
+    "lsp_save_document",
+    "Notify the LSP server that a document was saved (textDocument/didSave). Does NOT write to disk.",
+    SaveDocumentInputSchema.shape,
+    async (args) => {
+      try {
+        const info = saveDocument(clientManager, args.language, args.filePath, args.text);
+        if (!info) {
+          return { content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.DOCUMENT_NOT_FOUND, `Document not open: ${args.filePath}`), null, 2) }] };
+        }
+        return { content: [{ type: "text" as const, text: JSON.stringify(info, null, 2) }] };
+      } catch (err: unknown) {
+        return { content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.LSP_REQUEST_FAILED, String(err)), null, 2) }] };
+      }
+    }
+  );
+
+  // ── V4: lsp_list_open_documents ───────────────────────────────────────────────
+
+  server.tool(
+    "lsp_list_open_documents",
+    "Return all documents currently tracked as open in the LSP servers, optionally filtered by language.",
+    ListOpenDocumentsInputSchema.shape,
+    async (args) => {
+      try {
+        const docs = listOpenDocuments(args.language);
+        return { content: [{ type: "text" as const, text: JSON.stringify(docs, null, 2) }] };
       } catch (err: unknown) {
         return { content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.LSP_REQUEST_FAILED, String(err)), null, 2) }] };
       }
