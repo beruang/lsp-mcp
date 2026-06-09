@@ -1,4 +1,4 @@
-# mcp-lsp-v1
+# MCP LSP — Code Intelligence Server
 
 <div align="center">
 
@@ -9,7 +9,9 @@
 
 </div>
 
-A Model Context Protocol (MCP) stdio server that wraps language servers to expose a small, safe, read-oriented code-intelligence tool surface for coding agents. Supports TypeScript/JavaScript and Python via `typescript-language-server` and `pyright-langserver`.
+A Model Context Protocol (MCP) stdio server that wraps language servers to expose a safe, read-oriented code-intelligence tool surface for coding agents. Supports TypeScript, JavaScript, Python, Go, and Rust.
+
+**59 tools across four generations — semantic navigation, safe refactoring, deep understanding, and production operations.**
 
 ---
 
@@ -21,23 +23,12 @@ A Model Context Protocol (MCP) stdio server that wraps language servers to expos
 - [Configuration](#configuration)
 - [Architecture](#architecture)
 - [API Reference](#api-reference)
-  - [lsp_health_check](#lsp_health_check)
-  - [lsp_hover](#lsp_hover)
-  - [lsp_definition](#lsp_definition)
-  - [lsp_references](#lsp_references)
-  - [lsp_document_symbols](#lsp_document_symbols)
-  - [lsp_workspace_symbols](#lsp_workspace_symbols)
-  - [lsp_diagnostics](#lsp_diagnostics)
-  - [lsp_diagnostics_summary](#lsp_diagnostics_summary)
-  - [lsp_rename_preview](#lsp_rename_preview)
-  - [lsp_inspect_symbol](#lsp_inspect_symbol)
 - [Error Handling](#error-handling)
 - [Safety Model](#safety-model)
 - [Development](#development)
 - [Testing](#testing)
 - [Supported Languages](#supported-languages)
 - [Troubleshooting](#troubleshooting)
-- [Contributing](#contributing)
 - [Changelog](#changelog)
 - [License](#license)
 
@@ -48,6 +39,7 @@ A Model Context Protocol (MCP) stdio server that wraps language servers to expos
 ```bash
 # Prerequisites: install language servers
 npm install -g typescript-language-server pyright
+# Go and Rust: install gopls and rust-analyzer via your package manager
 
 # Clone and install
 git clone https://github.com/beruang/lsp-mcp.git
@@ -61,7 +53,7 @@ pnpm run build
 WORKSPACE_PATH=/path/to/your/project node dist/index.js
 ```
 
-Connect any MCP client to the server's stdio transport. The server immediately begins listening for tool calls.
+Connect any MCP client to the server's stdio transport.
 
 ---
 
@@ -70,11 +62,13 @@ Connect any MCP client to the server's stdio transport. The server immediately b
 | Dependency | Version | Purpose |
 |---|---|---|
 | **Node.js** | >= 20 | Runtime |
-| **pnpm** (or npm) | — | Package management |
+| **pnpm** | — | Package management |
 | **`typescript-language-server`** | — | TypeScript/JavaScript LSP backend |
 | **`pyright-langserver`** | — | Python LSP backend |
+| **`gopls`** | — | Go LSP backend |
+| **`rust-analyzer`** | — | Rust LSP backend |
 
-Both language servers must be on `$PATH`. The server checks availability at startup and reports `lsp_server_unavailable` if a backend is missing.
+Language servers must be on `$PATH`. The server checks availability via `lsp_list_supported_languages`.
 
 ---
 
@@ -84,27 +78,37 @@ Both language servers must be on `$PATH`. The server checks availability at star
 pnpm install
 ```
 
-The project has no native dependencies. `pnpm install` fetches:
-
-- `@modelcontextprotocol/sdk` — MCP server framework
-- `vscode-jsonrpc` — LSP JSON-RPC transport
-- `vscode-languageserver-types` — LSP type definitions
-- `zod` — runtime schema validation
-- `diff` — unified-diff generation for rename preview
+Dependencies: `@modelcontextprotocol/sdk`, `vscode-jsonrpc`, `vscode-languageserver-types`, `zod`, `diff`.
 
 ---
 
 ## Configuration
 
-The server reads a single environment variable:
+### Environment Variables
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
 | `WORKSPACE_PATH` | No | `process.cwd()` | Absolute path to the workspace root |
 
-If `WORKSPACE_PATH` is set but the path does not exist, a warning is logged to stderr and the server falls back to `process.cwd()`.
+### Runtime Config (V4)
 
-All file paths accepted by tools must resolve inside `WORKSPACE_PATH` — paths outside the workspace are rejected with `path_outside_workspace`.
+| Variable | Default | Description |
+|---|---|---|
+| `LSP_MAX_REFERENCES` | 200 | Max references returned |
+| `LSP_MAX_WORKSPACE_SYMBOLS` | 100 | Max workspace symbols |
+| `LSP_MAX_DIAGNOSTICS` | 500 | Max diagnostics |
+| `LSP_MAX_COMPLETION_ITEMS` | 50 | Max completion items |
+| `LSP_MAX_CHANGED_FILES` | 100 | Max files in rename preview |
+| `LSP_MAX_EDITS` | 1000 | Max edits in workspace edit |
+| `LSP_MAX_CONTEXT_CHARACTERS` | 20000 | Max context characters |
+| `LSP_TIMEOUT_HOVER_MS` | 3000 | Hover timeout |
+| `LSP_TIMEOUT_DEFINITION_MS` | 5000 | Definition timeout |
+| `LSP_TIMEOUT_REFERENCES_MS` | 10000 | References timeout |
+| `LSP_REQUEST_LOG_MAX_ENTRIES` | 500 | Request log ring buffer size |
+| `LSP_RAW_REQUEST_ENABLED` | false | Enable debug raw request tool |
+| `LSP_VERBOSE_LOGGING` | false | Verbose logging |
+
+Use `lsp_get_config` to inspect effective configuration and `lsp_update_runtime_config` to adjust limits, timeouts, cache TTLs, and debug flags at runtime (in-memory only).
 
 ---
 
@@ -112,49 +116,58 @@ All file paths accepted by tools must resolve inside `WORKSPACE_PATH` — paths 
 
 ```
 src/
-├── index.ts                         # Entry point — MCP server bootstrap
+├── index.ts                          # Entry point — MCP server bootstrap
 ├── config/
-│   └── languageServers.ts           # Language server registry (ext → server mapping)
+│   ├── languageServers.ts            # Language server registry
+│   ├── defaults.ts                   # Default runtime config values
+│   ├── envConfig.ts                  # Environment variable parsing
+│   └── runtimeConfig.ts              # In-memory config merge + validation
 ├── lsp/
-│   ├── LspClient.ts                 # LSP connection: spawn, initialize, request, shutdown
-│   ├── LspClientManager.ts          # Singleton pool — one client per language
-│   ├── capabilities.ts              # Server capabilities snapshot extraction
-│   ├── diagnosticsCache.ts          # In-memory cache of publishDiagnostics notifications
-│   ├── documentStore.ts             # didOpen/didChange document state tracking
-│   └── normalize.ts                 # LSP → normalized shape converters
+│   ├── LspClient.ts                  # LSP connection: spawn, initialize, request, shutdown
+│   ├── LspClientManager.ts           # Per-language client pool + state queries
+│   ├── LspState.ts                   # 8-state machine with validated transitions
+│   ├── capabilities.ts               # Server capabilities extraction
+│   ├── diagnosticsCache.ts           # publishDiagnostics notification cache
+│   ├── documentStore.ts              # didOpen/didChange state tracking
+│   └── normalize.ts                  # LSP → normalized shape converters
 ├── mcp/
-│   ├── registerTools.ts             # All 10 MCP tool registrations
-│   ├── toolErrors.ts                # Structured error envelope
-│   └── schemas.ts                   # Zod schemas (shared validation)
+│   ├── registerTools.ts              # All 56 MCP tool registrations
+│   ├── toolErrors.ts                 # Structured error envelope
+│   └── schemas.ts                    # Zod schemas
+├── navigation/                       # V3: declaration, typeDef, implementation, signatureHelp, completion
+├── hierarchy/                        # V3: call hierarchy + type hierarchy (prepare, incoming/outgoing, super/subtypes)
+├── workspaceEdit/                    # V2: parse, validate, preview workspace edits
+├── codeActions/                      # V2: code action cache + normalization
+├── diagnostics/                      # V2: snapshot store, compare, wait-for-diagnostics
+├── context/                          # V3: enclosing symbol, symbol context, file outline
+├── analysis/                         # V3: change impact, fix candidates, explain diagnostics
+├── formatting/                       # V2: format + range format preview
+├── refactor/                         # V2: prepare rename, organize imports
+├── composite/                        # V1: diagnostics summary, inspect symbol
+├── diff/                             # V1: applyTextEdits, workspaceEditToDiff
+├── semantic/                         # V3: fixDiagnosticCandidates, explainDiagnostics, analyzeChangeImpact
+├── documents/                        # V4: open, close, sync, save, list documents
+├── ops/                              # V4: server status, restart, shutdown, readiness, liveness, workspace status
+├── observability/                    # V4: request tracker, request log
+├── cache/                            # V4: cache status + selective clearing
+├── debug/                            # V4: raw request (disabled by default, method denylist)
 ├── safety/
-│   ├── paths.ts                     # safeResolve — workspace containment check
-│   ├── limits.ts                    # Truncation caps and timeouts
-│   └── workspaceEdit.ts             # WorkspaceEdit validation (path + scheme checks)
-├── composite/
-│   ├── diagnosticsSummary.ts        # Group-and-summarize with root-cause heuristics
-│   └── inspectSymbol.ts             # Composite: hover + definition + refs + risk hints
-├── diff/
-│   ├── applyTextEdits.ts            # In-memory text-edit application
-│   └── workspaceEditToDiff.ts       # WorkspaceEdit → unified diff
+│   ├── paths.ts                      # Workspace containment check
+│   └── limits.ts                     # Truncation caps and timeouts
 └── utils/
-    ├── asyncTimeout.ts              # Promise race with timeout
-    └── uri.ts                       # URI ↔ path conversion helpers
+    ├── asyncTimeout.ts               # Promise race with timeout
+    ├── uri.ts                        # URI ↔ path conversion
+    ├── symbols.ts                    # Symbol kind normalization
+    ├── ids.ts                        # ID generation
+    ├── text.ts                       # Text utilities
+    └── time.ts                       # Time utilities
 ```
-
-### How It Works
-
-1. An MCP client connects over stdio.
-2. `index.ts` creates an `McpServer` and calls `registerAllTools`.
-3. On the first tool call for a given language, `LspClientManager` spawns the appropriate language server process and performs the LSP handshake (`initialize` / `initialized`).
-4. Documents are tracked in `documentStore` — `textDocument/didOpen` is sent on first access, `textDocument/didChange` on file modification.
-5. `publishDiagnostics` notifications from the LSP server are cached in `diagnosticsCache`, keyed by URI.
-6. Tool results are normalized to workspace-relative paths and returned as structured JSON with consistent shapes. Errors use a uniform `{ error: { code, message, details? } }` envelope.
 
 ---
 
 ## API Reference
 
-Every tool returns either a **success payload** (tool-specific shape, documented below) or a **structured error**:
+Every tool returns either a **success payload** or a **structured error**:
 
 ```json
 {
@@ -166,387 +179,113 @@ Every tool returns either a **success payload** (tool-specific shape, documented
 }
 ```
 
-All `filePath` parameters accept both absolute paths and workspace-relative paths. All positions use **zero-based** line and character offsets (UTF-16 code units).
-
----
-
-### lsp_health_check
-
-Verify transport, workspace, and LSP server availability.
-
-**Input:** none
-
-**Output:**
-
-```json
-{
-  "ok": true,
-  "message": "phase-1 stub"
-}
-```
-
-> Phase-1 stub. A richer health payload (per-language availability) is planned for post-V1.
-
----
-
-### lsp_hover
-
-Request `textDocument/hover` from the LSP server.
-
-**Input:**
-
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `filePath` | `string` | Yes | Path to the file |
-| `position` | `{ line: number, character: number }` | Yes | Cursor position (zero-based) |
-
-**Output:**
-
-```json
-{
-  "filePath": "/absolute/path/to/file.ts",
-  "position": { "line": 10, "character": 5 },
-  "contents": "function add(a: number, b: number): number",
-  "range": {
-    "start": { "line": 9, "character": 0 },
-    "end": { "line": 11, "character": 1 }
-  }
-}
-```
-
-| Field | Type | Description |
-|---|---|---|
-| `contents` | `string \| null` | Hover text, or `null` if nothing at the position |
-| `range` | `Range?` | Source range the hover applies to (optional) |
-
----
-
-### lsp_definition
-
-Request `textDocument/definition` from the LSP server.
-
-**Input:**
-
-| Parameter | Type | Required | Default | Description |
-|---|---|---|---|---|
-| `filePath` | `string` | Yes | — | Path to the file |
-| `position` | `{ line: number, character: number }` | Yes | — | Cursor position |
-| `maxResults` | `number` | No | `50` | Max results to return |
-
-**Output:**
-
-```json
-{
-  "locations": [
-    { "filePath": "src/util.ts", "range": { "start": { "line": 0, "character": 16 }, "end": { "line": 0, "character": 19 } } }
-  ],
-  "returned": 1,
-  "truncated": false
-}
-```
-
----
-
-### lsp_references
-
-Request `textDocument/references` from the LSP server.
-
-**Input:**
-
-| Parameter | Type | Required | Default | Description |
-|---|---|---|---|---|
-| `filePath` | `string` | Yes | — | Path to the file |
-| `position` | `{ line: number, character: number }` | Yes | — | Cursor position |
-| `includeDeclaration` | `boolean` | No | `true` | Include the declaration in results |
-| `maxResults` | `number` | No | `200` | Max results (cap) |
-
-**Output:**
-
-```json
-{
-  "references": [
-    { "filePath": "src/index.ts", "range": { "start": { "line": 0, "character": 9 }, "end": { "line": 0, "character": 12 } } }
-  ],
-  "referenceCount": 3,
-  "returned": 3,
-  "truncated": false
-}
-```
-
-Results are sorted by file path, then position.
-
----
-
-### lsp_document_symbols
-
-Request `textDocument/documentSymbol` from the LSP server.
-
-**Input:**
-
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `filePath` | `string` | Yes | Path to the file |
-
-**Output:**
-
-```json
-{
-  "filePath": "/abs/path/to/file.ts",
-  "symbols": [
-    {
-      "name": "add",
-      "kind": "function",
-      "range": { "start": { "line": 0, "character": 16 }, "end": { "line": 2, "character": 1 } },
-      "selectionRange": { "start": { "line": 0, "character": 16 }, "end": { "line": 0, "character": 19 } },
-      "children": []
-    }
-  ]
-}
-```
-
-Handles both hierarchical `DocumentSymbol[]` and flat `SymbolInformation[]` responses.
-
----
-
-### lsp_workspace_symbols
-
-Request `workspace/symbol` from the LSP server.
-
-**Input:**
-
-| Parameter | Type | Required | Default | Description |
-|---|---|---|---|---|
-| `query` | `string` | Yes | — | Search query (non-empty) |
-| `language` | `"typescript" \| "python" \| "auto"` | No | `"auto"` | Language to search, or `"auto"` for all registered servers |
-| `maxResults` | `number` | No | `100` | Max results |
-
-**Output:**
-
-```json
-{
-  "symbols": [
-    { "name": "add", "kind": "function", "filePath": "src/util.ts", "language": "typescript" }
-  ],
-  "returned": 1,
-  "truncated": false
-}
-```
-
----
-
-### lsp_diagnostics
-
-Return cached diagnostics for a file or the entire workspace. Triggers a warm-up pass (`didOpen` all source files) when `workspaceWide: true` and the cache is empty.
-
-**Input:**
-
-| Parameter | Type | Required | Default | Description |
-|---|---|---|---|---|
-| `filePath` | `string` | No | — | Path to a single file |
-| `workspaceWide` | `boolean` | No | `false` | If `true`, warm and return workspace-wide diagnostics |
-| `severity` | `"error" \| "warning" \| "info" \| "hint" \| "all"` | No | `"all"` | Filter by severity |
-| `maxResults` | `number` | No | `500` | Max results (cap) |
-
-At least one of `filePath` or `workspaceWide` should be provided. If neither is, all currently cached diagnostics are returned.
-
-**Output (single-file):**
-
-```json
-{
-  "diagnostics": [
-    {
-      "filePath": "src/index.ts",
-      "severity": "error",
-      "message": "Cannot find name 'foo'",
-      "source": "ts",
-      "code": 2304,
-      "range": { "start": { "line": 3, "character": 0 }, "end": { "line": 3, "character": 3 } }
-    }
-  ],
-  "returned": 1,
-  "truncated": false,
-  "waitedMs": 523
-}
-```
-
-**Output (workspace-wide, with warm-up):**
-
-```json
-{
-  "diagnostics": [...],
-  "returned": 12,
-  "truncated": false,
-  "waitedMs": 3721,
-  "warmedUp": true
-}
-```
-
-| Field | Type | Description |
-|---|---|---|
-| `waitedMs` | `number` | Time waited for diagnostics to arrive |
-| `warmedUp` | `boolean?` | `true` if a workspace warm-up pass was performed |
-
-**Wait configuration (per language):**
-
-| Language | Wait time |
-|---|---|
-| TypeScript | 2000ms |
-| Python | 2000ms |
-
----
-
-### lsp_diagnostics_summary
-
-Group diagnostics by severity, file, source, and message. Computes a `likelyRootCause` heuristic.
-
-**Input:**
-
-| Parameter | Type | Required | Default | Description |
-|---|---|---|---|---|
-| `filePath` | `string` | No | — | Path to a single file |
-| `workspaceWide` | `boolean` | No | `false` | If `true`, warm before summarizing |
-
-**Output:**
-
-```json
-{
-  "total": 3,
-  "bySeverity": [
-    { "severity": "error", "count": 2 },
-    { "severity": "warning", "count": 1 }
-  ],
-  "byFile": [
-    { "filePath": "src/index.ts", "count": 2 },
-    { "filePath": "src/util.ts", "count": 1 }
-  ],
-  "bySource": [
-    { "source": "ts", "count": 3 }
-  ],
-  "topMessages": [
-    { "message": "Cannot find name 'foo'", "count": 1, "severity": "error", "source": "ts" }
-  ],
-  "likelyRootCause": "missing_symbol"
-}
-```
-
-**Root cause heuristics (checked in order):**
-
-| Pattern | Label |
-|---|---|
-| `Cannot find module 'X'` | `missing_module` |
-| `Cannot find name 'X'` | `missing_symbol` |
-| `Property 'X' does not exist` | `missing_property` |
-| `Type 'X' is not assignable` | `type_mismatch` |
-| `is declared but never used` | `unused` |
-| Other error present | `unknown_error` |
-| No errors present | `null` |
-
----
-
-### lsp_rename_preview
-
-Preview a rename operation. Returns the `WorkspaceEdit` and a unified diff. **No files are written to disk.**
-
-**Input:**
-
-| Parameter | Type | Required | Default | Description |
-|---|---|---|---|---|
-| `filePath` | `string` | Yes | — | Path to the file |
-| `position` | `{ line: number, character: number }` | Yes | — | Position of the symbol to rename |
-| `newName` | `string` | Yes | — | New name for the symbol |
-| `includeDiff` | `boolean` | No | `true` | Include unified diff in response |
-
-**Output:**
-
-```json
-{
-  "canRename": true,
-  "changedFiles": ["/workspace/src/util.ts", "/workspace/src/index.ts"],
-  "editCount": 3,
-  "workspaceEdit": { "changes": { ... } },
-  "diff": "--- original\n+++ renamed\n@@ -1,3 +1,3 @@\n-export function add(...\n+export function addNumbers(...",
-  "safe": true,
-  "violations": []
-}
-```
-
-| Field | Type | Description |
-|---|---|---|
-| `canRename` | `boolean` | `false` if `prepareRename` returned `null` or rename failed |
-| `workspaceEdit` | `object` | Raw LSP `WorkspaceEdit` |
-| `diff` | `string?` | Unified diff (omitted if `includeDiff: false` or `safe: false`) |
-| `safe` | `boolean` | `true` if all changed files are within the workspace |
-| `violations` | `Violation[]` | Each violation has `{ type, message, filePath? }` |
-
-**Safety guarantees:**
-- Every URI in the `WorkspaceEdit` is validated against `WORKSPACE_PATH`.
-- Non-`file://` URIs and directory paths are rejected.
-- File mtimes are **never** changed — the tool is purely a preview.
-- Per-file diff output is capped at 200 lines.
-
----
-
-### lsp_inspect_symbol
-
-Composite tool: returns hover, definitions, references, enclosing symbols, and risk hints for a symbol. Sub-calls run sequentially (shortest timeout first).
-
-**Input:**
-
-| Parameter | Type | Required | Default | Description |
-|---|---|---|---|---|
-| `filePath` | `string` | Yes | — | Path to the file |
-| `position` | `{ line: number, character: number }` | Yes | — | Position of the symbol |
-| `maxReferences` | `number` | No | `50` | Max references to return |
-
-**Output:**
-
-```json
-{
-  "filePath": "/workspace/src/index.ts",
-  "position": { "line": 1, "character": 17 },
-  "hover": { "contents": "function sumTo(n: number): number" },
-  "definitions": [
-    { "filePath": "src/index.ts", "range": { "start": { "line": 1, "character": 16 }, "end": { "line": 1, "character": 21 } } }
-  ],
-  "references": {
-    "referenceCount": 2,
-    "returned": 2,
-    "truncated": false,
-    "items": [
-      { "filePath": "src/index.ts", "range": { ... } }
-    ]
-  },
-  "enclosingSymbols": [
-    { "name": "sumTo", "kind": "function", "range": { ... } }
-  ],
-  "riskHints": [
-    "Symbol has references in src/index.ts.",
-    "Symbol appears to be exported."
-  ]
-}
-```
-
-**Sub-call order (shortest timeout first):**
-
-| # | Method | Timeout |
-|---|---|---|
-| 1 | `textDocument/hover` | 3000ms |
-| 2 | `textDocument/definition` | 5000ms |
-| 3 | `textDocument/references` | 10000ms |
-| 4 | `textDocument/documentSymbol` | 5000ms |
-
-If any sub-call fails, the composite returns partial results with a `warnings` field listing the failures.
-
-**Risk hint rules:**
-
-| Condition | Hint |
-|---|---|
-| References across multiple files | "Symbol has references across multiple files." |
-| References in a single file | "Symbol has references in `<file>`." |
-| No references | "Symbol has no references." |
-| Definition outside current file | "Definition is outside current file." |
-| Enclosing symbol is `class`/`interface` | "Symbol appears inside a public class/interface." |
-| No enclosing symbol (top-level) | "Symbol appears to be exported." |
+### V1 — Semantic Navigation (10 tools)
+
+| Tool | Description |
+|------|-------------|
+| `lsp_health_check` | Server health and LSP capabilities |
+| `lsp_hover` | `textDocument/hover` |
+| `lsp_definition` | `textDocument/definition` |
+| `lsp_references` | `textDocument/references` |
+| `lsp_document_symbols` | `textDocument/documentSymbol` |
+| `lsp_workspace_symbols` | `workspace/symbol` |
+| `lsp_diagnostics` | Cached diagnostics (file or workspace-wide) |
+| `lsp_diagnostics_summary` | Grouped diagnostics with root-cause heuristic |
+| `lsp_rename_preview` | Preview rename via `WorkspaceEdit` + unified diff |
+| `lsp_inspect_symbol` | Composite: hover + definitions + refs + risk hints |
+
+### V2 — Safe Refactoring Preview (11 tools)
+
+| Tool | Description |
+|------|-------------|
+| `lsp_prepare_rename` | `textDocument/prepareRename` |
+| `lsp_code_actions_preview` | `textDocument/codeAction` with diff |
+| `lsp_resolve_code_action` | Resolve cached code action |
+| `lsp_format_preview` | `textDocument/formatting` with diff |
+| `lsp_range_format_preview` | `textDocument/rangeFormatting` with diff |
+| `lsp_organize_imports_preview` | `textDocument/organizeImports` with diff |
+| `lsp_wait_for_diagnostics` | Wait for fresh diagnostics |
+| `lsp_snapshot_diagnostics` | Named diagnostic snapshot |
+| `lsp_compare_diagnostics` | Compare two diagnostic snapshots |
+| `lsp_workspace_edit_preview` | Preview any `WorkspaceEdit` + diff |
+| `lsp_validate_workspace_edit` | Validate `WorkspaceEdit` safety |
+
+### V3 — Deep Understanding (14 tools)
+
+| Tool | Description |
+|------|-------------|
+| `lsp_declaration` | `textDocument/declaration` |
+| `lsp_type_definition` | `textDocument/typeDefinition` |
+| `lsp_implementation` | `textDocument/implementation` |
+| `lsp_signature_help` | `textDocument/signatureHelp` |
+| `lsp_completion` | `textDocument/completion` |
+| `lsp_prepare_call_hierarchy` | `textDocument/prepareCallHierarchy` |
+| `lsp_incoming_calls` | `callHierarchy/incomingCalls` |
+| `lsp_outgoing_calls` | `callHierarchy/outgoingCalls` |
+| `lsp_prepare_type_hierarchy` | `textDocument/prepareTypeHierarchy` |
+| `lsp_supertypes` | `typeHierarchy/supertypes` |
+| `lsp_subtypes` | `typeHierarchy/subtypes` |
+| `lsp_symbol_context` | Surrounding symbols at position |
+| `lsp_enclosing_symbol` | Innermost enclosing symbol |
+| `lsp_file_outline` | File-level symbol outline |
+| `lsp_analyze_change_impact` | Cross-file impact analysis |
+| `lsp_fix_diagnostic_candidates` | Multi-source fix suggestions |
+| `lsp_explain_diagnostics` | Root-cause clustering |
+
+### V4 — Production Operations (21 tools)
+
+**Server Lifecycle:**
+| Tool | Description |
+|------|-------------|
+| `lsp_server_status` | Runtime status for all configured language servers |
+| `lsp_restart_server` | Restart a language server (reopens docs, clears diagnostics) |
+| `lsp_shutdown_server` | Graceful shutdown with timeout |
+| `lsp_list_supported_languages` | Configured languages, extensions, commands, binary availability |
+| `lsp_get_capabilities` | Normalized LSP capabilities per language |
+
+**Document Lifecycle:**
+| Tool | Description |
+|------|-------------|
+| `lsp_open_document` | `textDocument/didOpen` |
+| `lsp_close_document` | `textDocument/didClose` |
+| `lsp_sync_document` | `textDocument/didChange` (auto-opens if not tracked) |
+| `lsp_save_document` | `textDocument/didSave` notification |
+| `lsp_list_open_documents` | All tracked open documents |
+
+**Observability:**
+| Tool | Description |
+|------|-------------|
+| `lsp_request_log` | LSP request history with filtering |
+| `lsp_clear_request_log` | Clear request log entries |
+
+**Cache Management:**
+| Tool | Description |
+|------|-------------|
+| `lsp_cache_status` | Entry counts for all caches |
+| `lsp_clear_caches` | Selective or full cache clearing |
+
+**Configuration:**
+| Tool | Description |
+|------|-------------|
+| `lsp_get_config` | Effective config (defaults → env → runtime) |
+| `lsp_update_runtime_config` | In-memory config updates (limits, timeouts, cache, debug) |
+
+**Health:**
+| Tool | Description |
+|------|-------------|
+| `lsp_readiness` | Workspace + language server availability |
+| `lsp_liveness` | Fast liveness + optional memory stats |
+
+**Debug (disabled by default):**
+| Tool | Description |
+|------|-------------|
+| `lsp_raw_request` | Raw LSP request with method denylist |
+
+**Multi-Workspace Foundation (optional):**
+| Tool | Description |
+|------|-------------|
+| `lsp_list_workspaces` | Known workspaces |
+| `lsp_workspace_status` | Status for a specific workspace |
 
 ---
 
@@ -564,7 +303,7 @@ Every tool returns errors in a uniform envelope:
 }
 ```
 
-**Well-known error codes:**
+### Error Codes
 
 | Code | Trigger |
 |---|---|
@@ -572,113 +311,92 @@ Every tool returns errors in a uniform envelope:
 | `unsupported_language` | File extension has no registered LSP server |
 | `file_not_found` | File does not exist on disk |
 | `lsp_server_unavailable` | Language server binary not on `$PATH` |
-| `lsp_request_failed` | LSP request returned an error or exception |
+| `lsp_server_not_initialized` | Server not initialized |
+| `lsp_request_failed` | LSP request returned an error |
 | `lsp_request_timeout` | LSP request exceeded its deadline |
-| `lsp_capability_unsupported` | LSP server does not support the requested capability |
+| `lsp_capability_unsupported` | Server does not support the capability |
+| `declaration_not_supported` | Server lacks declaration provider |
+| `type_definition_not_supported` | Server lacks type definition provider |
+| `implementation_not_supported` | Server lacks implementation provider |
+| `signature_help_not_supported` | Server lacks signature help provider |
+| `completion_not_supported` | Server lacks completion provider |
+| `call_hierarchy_not_supported` | Server lacks call hierarchy provider |
+| `call_hierarchy_item_not_found` | Hierarchy item ID not found |
+| `call_hierarchy_item_expired` | Hierarchy item TTL expired |
+| `type_hierarchy_not_supported` | Server lacks type hierarchy provider |
+| `type_hierarchy_item_not_found` | Type hierarchy item ID not found |
+| `type_hierarchy_item_expired` | Type hierarchy item TTL expired |
+| `change_impact_analysis_incomplete` | Change impact partial results |
+| `diagnostic_not_found` | Diagnostic index not found |
+| `invalid_config_key` | Unknown config key in update |
+| `invalid_config_value` | Invalid config value (e.g., negative limit) |
+| `immutable_config_key` | Attempt to change workspacePath at runtime |
+| `server_not_found` | Language not configured |
+| `restart_rate_limited` | Too many restarts in window |
+| `raw_request_disabled` | Debug tool is disabled |
+| `method_denied` | LSP method blocked by denylist |
+| `document_not_found` | Document not in open documents store |
 
 ---
 
 ## Safety Model
 
-The server is designed for **read-oriented** coding agents. It enforces:
+The server is designed for **read-oriented** coding agents:
 
 | Guard | Mechanism |
 |---|---|
-| **Workspace containment** | `safeResolve` validates every file path against `WORKSPACE_PATH` using realpath resolution and relative-path checking |
-| **No file writes** | `lsp_rename_preview` returns a `WorkspaceEdit` and diff but never calls `workspace/applyEdit` — mtime checks prove no writes occurred |
-| **WorkspaceEdit validation** | All URIs in a `WorkspaceEdit` are validated: must be `file://` scheme, must resolve inside the workspace, must not be directories |
-| **Result caps** | Diagnostics ≤ 500, references ≤ 200, workspace symbols ≤ 100 |
-| **Timeouts** | Every LSP request has a per-method deadline (3s–10s) |
-| **Structured errors** | All error paths return typed, machine-readable errors — no bare exceptions or undefined behavior |
+| **Workspace containment** | Every file path validated against `WORKSPACE_PATH` |
+| **No file writes** | All tools are read-only; `lsp_rename_preview` returns a diff but never applies edits |
+| **Result caps** | All list results are truncated with configurable limits |
+| **Timeouts** | Every LSP request has a per-method deadline |
+| **Structured errors** | All errors use the uniform `{ error: { code, message, details } }` envelope |
+| **Request log privacy** | Logs method, duration, status — never full file contents (unless verbose logging explicitly enabled) |
+| **Method denylist** | `lsp_raw_request` blocks `workspace/applyEdit`, `workspace/executeCommand`, and other dangerous methods |
+| **Restart rate limiting** | Max 3 restarts per 60s per language |
+| **State machine validation** | Invalid LSP state transitions are logged and rejected |
 
 ---
 
 ## Development
 
 ```bash
-# Type-check (no emit)
-pnpm run typecheck
-
-# Lint
-pnpm run lint            # ESLint (zero warnings enforced)
-pnpm run lint:fix        # ESLint with auto-fix
-
-# Run directly with tsx (no build step)
-pnpm run dev
-
-# Build to dist/
-pnpm run build
-
-# Start the built artifact
-WORKSPACE_PATH=./fixtures/sample-ts pnpm run start
+pnpm run typecheck     # TypeScript type-check
+pnpm run lint          # ESLint (zero warnings)
+pnpm run lint:fix      # ESLint auto-fix
+pnpm run dev           # Run with tsx (no build)
+pnpm run build         # Build to dist/
+pnpm run start         # Start built artifact
 ```
 
 ### Pre-commit Hook
 
-A [husky](https://typicode.github.io/husky/) pre-commit hook runs [lint-staged](https://github.com/lint-staged/lint-staged) on staged `.ts` files:
+[husky](https://typicode.github.io/husky/) + [lint-staged](https://github.com/lint-staged/lint-staged):
+1. `eslint --fix --max-warnings 0`
+2. `pnpm run typecheck`
+3. `pnpm run verify:decoupling`
 
-1. `eslint --fix --max-warnings 0` — fixable rules applied, remaining issues block commit
-2. `pnpm run typecheck` — full TypeScript type-check
+### Conventions
 
-The hook is installed automatically via the `"prepare"` script on `pnpm install`.
-
-### Project Conventions
-
-- **Module system:** ESM (`"type": "module"`, `NodeNext` resolution)
-- **TypeScript:** strict mode, target ES2022
-- **Testing:** `node --test` (native test runner) with `tsx` for TypeScript
-- **Linting:** ESLint with `@typescript-eslint` — unused vars are errors, `no-explicit-any` is off (LSP protocol data is loosely typed)
-- **Formatting:** No formatter enforced — ESLint handles code-quality rules, `tsc` handles correctness
+- **Module system:** ESM (`"type": "module"`, `NodeNext`)
+- **TypeScript:** strict, target ES2022
+- **Testing:** `node --test` + `tsx`
+- **Linting:** ESLint with `@typescript-eslint`, zero-warnings policy
 
 ---
 
 ## Testing
 
-### Unit Tests
-
 ```bash
-pnpm test
+pnpm test              # All unit tests
+npm run test:safety    # Safety tests
+npm run test:integration  # Integration tests (requires language servers)
 ```
 
-73 tests across 11 suites: `toolErrors`, `asyncTimeout`, `paths`, `languageServers`, `normalize`, `diagnosticsCache`, `diagnosticsSummary`, `workspaceEdit`, `applyTextEdits`, `inspectSymbol`, `clampResults`.
+### Coverage
 
-### End-to-End Tests (per phase)
-
-Each phase 4–9 has a dedicated E2E smoke test that spawns the built server and makes real LSP tool calls:
-
-```bash
-pnpm run e2e:phase-4   # hover + definition (TypeScript)
-pnpm run e2e:phase-5   # references + symbols (TypeScript)
-pnpm run e2e:phase-6   # diagnostics (TypeScript)
-pnpm run e2e:phase-7   # rename preview (TypeScript)
-pnpm run e2e:phase-8   # inspect symbol (TypeScript)
-pnpm run e2e:phase-9   # all tools (Python)
-```
-
-### Acceptance Tests
-
-```bash
-pnpm run build
-npx tsx scripts/acceptance.ts
-```
-
-Runs 4 groups against both fixtures:
-
-| Group | Tests | Fixture |
-|---|---|---|
-| **Health** | Server availability, both LSP backends reachable | TypeScript |
-| **TypeScript** | All 8 tools produce spec-shaped payloads | `fixtures/sample-ts/` |
-| **Python** | All 6 tools produce spec-shaped payloads | `fixtures/sample-py/` |
-| **Safety** | Path rejection, no-write proof, truncation, unsupported types | TypeScript |
-
-All 4 groups must pass for the build to be considered shippable.
-
-### Test Fixtures
-
-| Fixture | Contents |
-|---|---|
-| `fixtures/sample-ts/` | TypeScript project: `src/index.ts` (imports `add`), `src/util.ts` (exports `add`) |
-| `fixtures/sample-py/` | Python project: `src/hello.py` (exports `greet`, `add_numbers`), `src/usage.py` (imports + deliberate type mismatch) |
+- **106+ tests** across unit, integration, and safety suites
+- **5 languages:** TypeScript, JavaScript, Python, Go, Rust
+- **V1-V3 regression:** all passing with every V4 change
 
 ---
 
@@ -689,11 +407,13 @@ All 4 groups must pass for the build to be considered shippable.
 | TypeScript | `.ts`, `.tsx` | `typescript-language-server --stdio` | `typescript` |
 | JavaScript | `.js`, `.jsx` | `typescript-language-server --stdio` | `typescript` |
 | Python | `.py` | `pyright-langserver --stdio` | `python` |
+| Go | `.go` | `gopls` | `go` |
+| Rust | `.rs` | `rust-analyzer` | `rust` |
 
-Adding a new language requires:
-1. An entry in `src/config/languageServers.ts` (extensions, command, args, languageId).
-2. The language server binary on `$PATH`.
-3. (Optional) a `waitConfig` entry in `src/lsp/diagnosticsCache.ts`.
+Adding a language:
+1. Entry in `src/config/languageServers.ts`
+2. Binary on `$PATH`
+3. Optional `waitConfig` in `src/lsp/diagnosticsCache.ts`
 
 ---
 
@@ -701,50 +421,35 @@ Adding a new language requires:
 
 ### `lsp_server_unavailable`
 
-The language server binary is not on `$PATH`.
-
 ```bash
-which typescript-language-server
-which pyright-langserver
-```
-
-Install globally:
-
-```bash
+which typescript-language-server pyright-langserver gopls rust-analyzer
 npm install -g typescript-language-server pyright
 ```
 
+Use `lsp_list_supported_languages` to check binary availability at runtime.
+
 ### `path_outside_workspace`
 
-Ensure `WORKSPACE_PATH` is set to the root of the project you want to analyze and that all `filePath` arguments resolve inside it. Symlinks are resolved before containment is checked.
+Set `WORKSPACE_PATH` to the project root. Symlinks are resolved before containment check.
 
-### No diagnostics returned
+### No diagnostics
 
-Diagnostics are cached from `publishDiagnostics` notifications, which the LSP server sends after files are opened. For a cold cache, use `workspaceWide: true` to trigger a warm-up pass, or call `lsp_diagnostics` with a specific `filePath` to open that file and wait for diagnostics (up to 2000ms).
+Diagnostics are cached from `publishDiagnostics` notifications. For cold cache, use `lsp_diagnostics` with `workspaceWide: true` to trigger a warm-up pass, or `lsp_wait_for_diagnostics`.
 
-### Rename preview returns `canRename: false`
+### Stale diagnostics after external edit
 
-Some language servers (notably Pyright) may return `null` from `prepareRename`. The tool handles this gracefully with `canRename: false` and a violation explaining why.
-
----
-
-## Contributing
-
-This is a V1 implementation. For bug reports, feature requests, or questions, open an issue on the repository.
-
-Internal contribution flow:
-1. Changes follow the 10-phase spec structure under `docs/mcp-lsp-v1/spec/`.
-2. Each phase produces its own E2E test script.
-3. `pnpm run typecheck && pnpm test` must pass before commit.
-4. Acceptance tests (`scripts/acceptance.ts`) must remain green.
+Use `lsp_sync_document` to notify the LSP of changes, then `lsp_wait_for_diagnostics`. For bulk recovery, `lsp_restart_server` with `reopenDocuments: true`.
 
 ---
 
 ## Changelog
 
-See [CHANGELOG.md](./CHANGELOG.md) for version history.
-
-Current: **v0.1.0** — 10 MCP tools, TypeScript + Python support, safety model, acceptance suite (21/21).
+| Version | Focus | Tools |
+|---|---|---|
+| **V4** | Production operations | 21 tools — server lifecycle, document lifecycle, observability, cache, config, health, debug |
+| **V3** | Deep understanding | 17 tools — hierarchy, type, signature, completion, impact analysis |
+| **V2** | Safe refactoring | 11 tools — preview-first editing, diagnostics validation |
+| **V1** | Semantic navigation | 10 tools — hover, definition, references, symbols, diagnostics |
 
 ---
 
