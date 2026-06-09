@@ -5,6 +5,7 @@ import { ServerCapabilitiesSnapshot, extractCapabilities } from "./capabilities.
 import { withTimeout } from "../utils/asyncTimeout.js";
 import { diagnosticsCache } from "./diagnosticsCache.js";
 import { diagnosticFromLsp, uriToRel } from "./normalize.js";
+import { LspState } from "./LspState.js";
 
 export interface SpawnOptions {
   command: string;
@@ -19,31 +20,51 @@ export class LspClient {
   private connection: MessageConnection;
   private caps: ServerCapabilitiesSnapshot;
   private workspacePath: string;
+  readonly state: LspState;
 
-  private constructor(proc: ChildProcess, connection: MessageConnection, caps: ServerCapabilitiesSnapshot, workspacePath: string) {
+  private constructor(proc: ChildProcess, connection: MessageConnection, caps: ServerCapabilitiesSnapshot, workspacePath: string, state: LspState) {
     this.proc = proc;
     this.connection = connection;
     this.caps = caps;
     this.workspacePath = workspacePath;
+    this.state = state;
   }
 
   static async spawn(opts: SpawnOptions): Promise<LspClient> {
     const startupTimeoutMs = opts.startupTimeoutMs ?? 30_000;
+    const state = new LspState(opts.command, opts.command, opts.args);
+    state.transition("starting");
 
     // Check if command exists on PATH
-    await new Promise<void>((resolve, reject) => {
-      execFile("command", ["-v", opts.command], (err, stdout) => {
-        if (err || stdout.trim() === "") {
-          reject(new Error(`lsp_server_unavailable: ${opts.command} not found on PATH`));
-        } else {
-          resolve();
-        }
+    try {
+      await new Promise<void>((resolve, reject) => {
+        execFile("command", ["-v", opts.command], (err, stdout) => {
+          if (err || stdout.trim() === "") {
+            reject(new Error(`lsp_server_unavailable: ${opts.command} not found on PATH`));
+          } else {
+            resolve();
+          }
+        });
       });
-    });
+    } catch (e: unknown) {
+      state.lastError = String(e);
+      state.transition("failed");
+      throw e;
+    }
 
     // Spawn the process
     const proc = spawn(opts.command, opts.args, {
       stdio: ["pipe", "pipe", "pipe"]
+    });
+
+    state.pid = proc.pid ?? undefined;
+
+    // Detect unexpected process exit
+    proc.on("exit", (code, signal) => {
+      if (state.state !== "stopping" && state.state !== "stopped") {
+        state.lastError = `Process exited unexpectedly (code=${code}, signal=${signal})`;
+        state.transition("crashed");
+      }
     });
 
     const reader = new StreamMessageReader(proc.stdout);
@@ -89,15 +110,26 @@ export class LspClient {
       initializationOptions: {}
     };
 
-    const response = await withTimeout(
-      connection.sendRequest("initialize", initializeParams) as Promise<any>,
-      startupTimeoutMs,
-      "initialize"
-    );
+    state.transition("initializing");
+
+    let response;
+    try {
+      response = await withTimeout(
+        connection.sendRequest("initialize", initializeParams) as Promise<any>,
+        startupTimeoutMs,
+        "initialize"
+      );
+    } catch (e: unknown) {
+      state.lastError = String(e);
+      state.transition("failed");
+      throw e;
+    }
 
     connection.sendNotification("initialized", {});
 
     const caps = extractCapabilities(response?.capabilities);
+    state.capabilitiesKnown = true;
+    state.transition("running");
 
     // Subscribe to publishDiagnostics notifications
     connection.onNotification("textDocument/publishDiagnostics", (params: any) => {
@@ -107,7 +139,7 @@ export class LspClient {
       console.error(`[lsp:${proc.pid}] publishDiagnostics: ${params.uri} (${normalized.length} diagnostics)`);
     });
 
-    return new LspClient(proc, connection, caps, opts.workspacePath);
+    return new LspClient(proc, connection, caps, opts.workspacePath, state);
   }
 
   async request<R>(method: string, params: unknown, timeoutMs?: number): Promise<R> {
@@ -123,6 +155,7 @@ export class LspClient {
   }
 
   async shutdown(): Promise<void> {
+    this.state.transition("stopping");
     try {
       await withTimeout(
         this.connection.sendRequest("shutdown", null) as Promise<void>,
@@ -147,6 +180,7 @@ export class LspClient {
     } catch {
       // Best-effort: process may already be gone
     }
+    this.state.transition("stopped");
   }
 
   getCapabilities(): ServerCapabilitiesSnapshot {
