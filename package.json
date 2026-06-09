@@ -1,6 +1,6 @@
 {
-  "name": "mcp-lsp-v1",
-  "version": "0.1.0",
+  "name": "mcp-lsp-v2",
+  "version": "0.2.0",
   "type": "module",
   "private": true,
   "scripts": {
@@ -10,7 +10,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint src/ scripts/ --max-warnings 0",
     "lint:fix": "eslint src/ scripts/ --fix --max-warnings 0",
-    "test": "node --test --import tsx src/mcp/toolErrors.test.ts src/utils/asyncTimeout.test.ts src/safety/paths.test.ts src/config/languageServers.test.ts src/lsp/normalize.test.ts src/lsp/diagnosticsCache.test.ts src/composite/diagnosticsSummary.test.ts src/safety/workspaceEdit.test.ts src/diff/applyTextEdits.test.ts src/composite/inspectSymbol.test.ts",
+    "test": "node --test --import tsx src/mcp/toolErrors.test.ts src/utils/asyncTimeout.test.ts src/safety/paths.test.ts src/config/languageServers.test.ts src/lsp/normalize.test.ts src/lsp/diagnosticsCache.test.ts src/composite/diagnosticsSummary.test.ts src/safety/workspaceEdit.test.ts src/diff/applyTextEdits.test.ts src/composite/inspectSymbol.test.ts src/workspaceEdit/parseWorkspaceEdit.test.ts src/workspaceEdit/validateWorkspaceEdit.test.ts src/workspaceEdit/applyTextEdits.test.ts src/workspaceEdit/previewWorkspaceEdit.test.ts",
+    "test:safety": "node --test --import tsx src/safety/v2-safety.test.ts",
     "smoke:phase-2": "tsx scripts/phase-2-smoke.ts",
     "e2e:phase-4": "tsx scripts/phase-4-e2e.ts",
     "e2e:phase-5": "tsx scripts/phase-5-e2e.ts",
