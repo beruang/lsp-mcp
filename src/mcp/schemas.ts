@@ -129,3 +129,100 @@ export const CodeActionsPreviewInputSchema = z.object({
   maxActions: z.number().int().positive().default(20).describe("Maximum number of actions to return."),
   includeDiff: z.boolean().default(true).describe("Whether to include diffs for edit actions."),
 });
+
+// ── V3 tool schemas ─────────────────────────────────────────────────────────
+
+export const DeclarationInputSchema = z.object({
+  filePath: z.string().describe("Absolute or workspace-relative path to the file."),
+  position: PositionSchema.describe("Line/character position (zero-based) of the symbol."),
+  maxResults: z.number().int().positive().default(50).describe("Maximum number of results."),
+});
+
+export const TypeDefinitionInputSchema = z.object({
+  filePath: z.string().describe("Absolute or workspace-relative path to the file."),
+  position: PositionSchema.describe("Line/character position (zero-based) of the symbol."),
+  maxResults: z.number().int().positive().default(50).describe("Maximum number of results."),
+});
+
+export const ImplementationInputSchema = z.object({
+  filePath: z.string().describe("Absolute or workspace-relative path to the file."),
+  position: PositionSchema.describe("Line/character position (zero-based) of the symbol."),
+  maxResults: z.number().int().positive().default(100).describe("Maximum number of results."),
+});
+
+export const SignatureHelpInputSchema = z.object({
+  filePath: z.string().describe("Absolute or workspace-relative path to the file."),
+  position: PositionSchema.describe("Line/character position (zero-based) at the call site."),
+});
+
+export const CompletionInputSchema = z.object({
+  filePath: z.string().describe("Absolute or workspace-relative path to the file."),
+  position: PositionSchema.describe("Line/character position (zero-based) for completion."),
+  maxResults: z.number().int().positive().default(50).describe("Maximum number of completion items."),
+  includeDocumentation: z.boolean().default(false).describe("Include documentation in completion items."),
+  includeInsertText: z.boolean().default(false).describe("Include insert text in completion items."),
+});
+
+export const PrepareCallHierarchyInputSchema = z.object({
+  filePath: z.string().describe("Absolute or workspace-relative path to the file."),
+  position: PositionSchema.describe("Line/character position (zero-based) of the symbol."),
+  maxItems: z.number().int().positive().default(10).describe("Maximum number of hierarchy items."),
+});
+
+export const IncomingCallsInputSchema = z.object({
+  itemId: z.string().describe("Opaque item ID from lsp_prepare_call_hierarchy."),
+  maxResults: z.number().int().positive().default(100).describe("Maximum number of calls."),
+});
+
+export const OutgoingCallsInputSchema = z.object({
+  itemId: z.string().describe("Opaque item ID from lsp_prepare_call_hierarchy."),
+  maxResults: z.number().int().positive().default(100).describe("Maximum number of calls."),
+});
+
+// ── V3: Type Hierarchy ─────────────────────────────────────────────────────
+
+export const PrepareTypeHierarchyInputSchema = z.object({
+  filePath: z.string().describe("Absolute or workspace-relative path to the file."),
+  position: PositionSchema.describe("Line/character position (zero-based) of the symbol."),
+  maxItems: z.number().int().positive().default(10).describe("Maximum number of hierarchy items."),
+});
+
+export const TypeHierarchyInputSchema = z.object({
+  itemId: z.string().describe("Opaque item ID from lsp_prepare_type_hierarchy."),
+  maxResults: z.number().int().positive().default(100).describe("Maximum number of results."),
+});
+
+// ── V3: Diagnostic Intelligence ─────────────────────────────────────────────
+
+export const FixDiagnosticCandidatesInputSchema = z.object({
+  filePath: z.string().describe("Absolute or workspace-relative path to the file."),
+  diagnosticIndex: z.number().int().nonnegative().optional().describe("0-based index of diagnostic in the file."),
+  diagnosticCode: z.union([z.string(), z.number()]).optional().describe("Diagnostic code to match."),
+  range: z.object({
+    start: PositionSchema,
+    end: PositionSchema,
+  }).optional().describe("Range to find intersecting diagnostic."),
+  includeCodeActions: z.boolean().default(true).describe("Include LSP code actions."),
+  includeHover: z.boolean().default(true).describe("Include hover information."),
+  includeDefinition: z.boolean().default(true).describe("Include definition locations."),
+  includeSignatureHelp: z.boolean().default(true).describe("Include signature help."),
+});
+
+// ── V3: Change Impact ──────────────────────────────────────────────────────
+
+export const AnalyzeChangeImpactInputSchema = z.object({
+  filePath: z.string().describe("Absolute or workspace-relative path to the file."),
+  position: PositionSchema.describe("Line/character position (zero-based) of the symbol."),
+  changeKind: z.enum(["rename", "signature_change", "behavior_change", "type_change", "visibility_change", "delete_symbol", "move_symbol", "unknown"]).default("unknown").describe("Type of change being considered."),
+  maxReferences: z.number().int().positive().default(200).describe("Maximum references to inspect."),
+  includeCallers: z.boolean().default(true).describe("Include incoming call hierarchy."),
+  includeCallees: z.boolean().default(true).describe("Include outgoing call hierarchy."),
+  includeImplementations: z.boolean().default(true).describe("Include implementation locations."),
+});
+
+export const ExplainDiagnosticsInputSchema = z.object({
+  filePath: z.string().optional().describe("Filter diagnostics to a single file. Omit for workspace-wide."),
+  workspaceWide: z.boolean().default(true).describe("Include all files when true."),
+  maxDiagnostics: z.number().int().positive().default(20).describe("Maximum root cause candidates."),
+  includeFixCandidates: z.boolean().default(false).describe("Include fix candidates for top diagnostics."),
+});

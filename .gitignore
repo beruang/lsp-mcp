@@ -6,3 +6,4 @@ fixtures/sample-py/.venv
 .DS_Store
 .agent/
 docs/
+spec/

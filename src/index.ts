@@ -12,11 +12,11 @@ function resolveWorkspacePath(): string {
     // Per spec §6 + phase-1 spec: if WORKSPACE_PATH is set but missing, warn
     // on stderr and fall back to process.cwd(). stdout is reserved for MCP.
     console.error(
-      `[mcp-lsp-v2] WORKSPACE_PATH="${fromEnv}" does not exist; falling back to process.cwd() (${process.cwd()})`
+      `[mcp-lsp-v3] WORKSPACE_PATH="${fromEnv}" does not exist; falling back to process.cwd() (${process.cwd()})`
     );
   } else if (fromEnv !== undefined) {
     console.error(
-      `[mcp-lsp-v2] WORKSPACE_PATH is empty; falling back to process.cwd() (${process.cwd()})`
+      `[mcp-lsp-v3] WORKSPACE_PATH is empty; falling back to process.cwd() (${process.cwd()})`
     );
   }
   return process.cwd();
@@ -27,8 +27,8 @@ async function main(): Promise<void> {
 
   const server = new McpServer(
     {
-      name: "mcp-lsp-v2",
-      version: "0.2.0",
+      name: "mcp-lsp-v3",
+      version: "0.3.0",
     },
     {
       capabilities: {
@@ -47,6 +47,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((err) => {
-  console.error("[mcp-lsp-v2] fatal error during startup:", err);
+  console.error("[mcp-lsp-v3] fatal error during startup:", err);
   process.exit(1);
 });

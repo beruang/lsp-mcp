@@ -1,6 +1,6 @@
 {
-  "name": "mcp-lsp-v2",
-  "version": "0.2.0",
+  "name": "mcp-lsp-v3",
+  "version": "0.3.0",
   "type": "module",
   "private": true,
   "scripts": {
