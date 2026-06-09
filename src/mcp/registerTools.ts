@@ -147,9 +147,9 @@ export function registerAllTools(
                 workspaceSymbols: !!caps.workspaceSymbolProvider,
                 diagnostics: !!caps.diagnosticProvider,
                 rename: !!caps.renameProvider,
-                prepareRename: typeof caps.renameProvider === "object" && !!(caps.renameProvider as Record<string, unknown>).prepareProvider,
+                prepareRename: caps.prepareRenameProvider,
                 codeActions: !!caps.codeActionProvider,
-                codeActionResolve: typeof caps.codeActionProvider === "object" && !!(caps.codeActionProvider as Record<string, unknown>).resolveProvider,
+                codeActionResolve: caps.codeActionResolveProvider,
                 formatting: !!caps.documentFormattingProvider,
                 rangeFormatting: !!caps.documentRangeFormattingProvider,
                 organizeImports: true,
@@ -601,10 +601,10 @@ export function registerAllTools(
     "Request workspace/symbol from the LSP server and return normalized symbols.",
     {
       query: z.string().describe("Search query string."),
-      language: z.enum(["typescript", "python", "auto"]).default("auto").describe("Language to search in, or 'auto' for all."),
+      language: z.enum(["typescript", "python", "go", "rust", "auto"]).default("auto").describe("Language to search in, or 'auto' for all."),
       maxResults: z.number().int().nonnegative().default(LIMITS.WORKSPACE_SYMBOLS_MAX).describe("Maximum number of results to return."),
     },
-    async (args: { query: string; language?: "typescript" | "python" | "auto"; maxResults?: number }) => {
+    async (args: { query: string; language?: "typescript" | "python" | "go" | "rust" | "auto"; maxResults?: number }) => {
       const { query, language = "auto", maxResults = LIMITS.WORKSPACE_SYMBOLS_MAX } = args;
       const { workspacePath } = ctx;
 

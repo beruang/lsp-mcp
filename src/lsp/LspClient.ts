@@ -4,7 +4,7 @@ import { ChildProcess, execFile, spawn } from "child_process";
 import { ServerCapabilitiesSnapshot, extractCapabilities } from "./capabilities.js";
 import { withTimeout } from "../utils/asyncTimeout.js";
 import { diagnosticsCache } from "./diagnosticsCache.js";
-import { diagnosticFromLsp, uriToRel } from "./normalize.js";
+import { diagnosticFromLsp, uriToAbs } from "./normalize.js";
 import { LspState } from "./LspState.js";
 import { requestTracker } from "../observability/requestTracker.js";
 
@@ -137,7 +137,7 @@ export class LspClient {
 
     // Subscribe to publishDiagnostics notifications
     connection.onNotification("textDocument/publishDiagnostics", (params: any) => {
-      const filePath = uriToRel(opts.workspacePath, params.uri);
+      const filePath = uriToAbs(params.uri);
       const normalized = (params.diagnostics ?? []).map((d: any) => diagnosticFromLsp(filePath, d));
       diagnosticsCache.set(params.uri, normalized);
       console.error(`[lsp:${proc.pid}] publishDiagnostics: ${params.uri} (${normalized.length} diagnostics)`);
