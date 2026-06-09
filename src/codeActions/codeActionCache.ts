@@ -64,6 +64,10 @@ class CodeActionCache {
     return this.cache.size;
   }
 
+  clear(): void {
+    this.cache.clear();
+  }
+
   private startCleanup(): void {
     this.cleanupTimer = setInterval(() => {
       const now = Date.now();

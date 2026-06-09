@@ -226,3 +226,153 @@ export const ExplainDiagnosticsInputSchema = z.object({
   maxDiagnostics: z.number().int().positive().default(20).describe("Maximum root cause candidates."),
   includeFixCandidates: z.boolean().default(false).describe("Include fix candidates for top diagnostics."),
 });
+
+// ── V4: Runtime Config ──────────────────────────────────────────────────────
+
+export const GetConfigInputSchema = z.object({
+  includeDefaults: z.boolean().default(true).describe("Include default config values."),
+  includeEnv: z.boolean().default(true).describe("Include environment variable overrides."),
+});
+
+export const UpdateRuntimeConfigInputSchema = z.object({
+  config: z.object({
+    limits: z.object({
+      maxReferences: z.number().int().positive().optional(),
+      maxWorkspaceSymbols: z.number().int().positive().optional(),
+      maxDiagnostics: z.number().int().positive().optional(),
+      maxCompletionItems: z.number().int().positive().optional(),
+      maxChangedFiles: z.number().int().positive().optional(),
+      maxEdits: z.number().int().positive().optional(),
+      maxContextCharacters: z.number().int().positive().optional(),
+    }).optional(),
+    timeoutsMs: z.object({
+      hover: z.number().int().positive().optional(),
+      definition: z.number().int().positive().optional(),
+      references: z.number().int().positive().optional(),
+      diagnostics: z.number().int().positive().optional(),
+      renamePreview: z.number().int().positive().optional(),
+      codeActions: z.number().int().positive().optional(),
+      formatting: z.number().int().positive().optional(),
+      callHierarchy: z.number().int().positive().optional(),
+      typeHierarchy: z.number().int().positive().optional(),
+      completion: z.number().int().positive().optional(),
+      compositeAnalysis: z.number().int().positive().optional(),
+    }).optional(),
+    caches: z.object({
+      codeActionTtlMs: z.number().int().positive().optional(),
+      diagnosticSnapshotTtlMs: z.number().int().positive().optional(),
+      callHierarchyTtlMs: z.number().int().positive().optional(),
+      typeHierarchyTtlMs: z.number().int().positive().optional(),
+      requestLogMaxEntries: z.number().int().positive().optional(),
+    }).optional(),
+    debug: z.object({
+      rawRequestEnabled: z.boolean().optional(),
+      includeRawLspResponses: z.boolean().optional(),
+      verboseLogging: z.boolean().optional(),
+    }).optional(),
+  }).describe("Partial runtime config. Immutable keys (workspacePath) are rejected."),
+});
+
+// ── V4: Server Operations ───────────────────────────────────────────────────
+
+export const ServerStatusInputSchema = z.object({
+  language: z.string().optional().describe("Filter to a specific language. Omit for all."),
+});
+
+export const RestartServerInputSchema = z.object({
+  language: z.string().describe("Language server to restart (e.g., typescript, python)."),
+  reopenDocuments: z.boolean().default(true).describe("Re-open tracked documents after restart."),
+  shutdownTimeoutMs: z.number().int().positive().default(5000).describe("Max wait for shutdown before force kill."),
+});
+
+export const ShutdownServerInputSchema = z.object({
+  language: z.string().describe("Language server to shut down (e.g., typescript, python)."),
+  forceTimeoutMs: z.number().int().positive().default(5000).describe("Max wait for graceful shutdown before force kill."),
+});
+
+export const ListSupportedLanguagesInputSchema = z.object({});
+
+export const GetCapabilitiesInputSchema = z.object({
+  language: z.string().describe("Language to query capabilities for."),
+  startIfNeeded: z.boolean().default(false).describe("Initialize the server if not already running."),
+});
+
+// ── V4: Document Lifecycle ──────────────────────────────────────────────────
+
+export const OpenDocumentInputSchema = z.object({
+  filePath: z.string().describe("Absolute or workspace-relative path to the file."),
+  language: z.string().describe("Language server to use (e.g., typescript, python)."),
+  text: z.string().optional().describe("File content. Reads from disk if omitted."),
+});
+
+export const CloseDocumentInputSchema = z.object({
+  filePath: z.string().describe("Absolute or workspace-relative path to the file."),
+  language: z.string().describe("Language server to use."),
+});
+
+export const SyncDocumentInputSchema = z.object({
+  filePath: z.string().describe("Absolute or workspace-relative path to the file."),
+  language: z.string().describe("Language server to use."),
+  text: z.string().optional().describe("New file content. Reads from disk if omitted."),
+});
+
+export const SaveDocumentInputSchema = z.object({
+  filePath: z.string().describe("Absolute or workspace-relative path to the file."),
+  language: z.string().describe("Language server to use."),
+  text: z.string().optional().describe("Saved file content for LSP notification."),
+});
+
+export const ListOpenDocumentsInputSchema = z.object({
+  language: z.string().optional().describe("Filter to a specific language. Omit for all."),
+});
+
+// ── V4: Observability ───────────────────────────────────────────────────────
+
+export const RequestLogInputSchema = z.object({
+  language: z.string().optional().describe("Filter by language."),
+  method: z.string().optional().describe("Filter by LSP method name."),
+  status: z.enum(["ok", "error", "timeout", "cancelled"]).optional().describe("Filter by request status."),
+  limit: z.number().int().positive().default(50).describe("Maximum entries to return (most recent)."),
+  since: z.string().optional().describe("ISO timestamp — only return entries after this time."),
+});
+
+export const ClearRequestLogInputSchema = z.object({
+  language: z.string().optional().describe("Clear only entries for this language."),
+  method: z.string().optional().describe("Clear only entries for this method."),
+  status: z.enum(["ok", "error", "timeout", "cancelled"]).optional().describe("Clear only entries with this status."),
+});
+
+// ── V4: Cache Management ────────────────────────────────────────────────────
+
+export const CacheStatusInputSchema = z.object({});
+
+export const ClearCachesInputSchema = z.object({
+  caches: z.array(z.string()).optional().describe("Cache names to clear. Omit or empty to clear all."),
+});
+
+// ── V4: Health ──────────────────────────────────────────────────────────────
+
+export const ReadinessInputSchema = z.object({
+  initServers: z.boolean().default(false).describe("Initialize configured language servers if not already running."),
+  language: z.string().optional().describe("Check a specific language server only."),
+});
+
+export const LivenessInputSchema = z.object({
+  includeMemory: z.boolean().default(false).describe("Include memory usage statistics."),
+});
+
+// ── V4: Debug ───────────────────────────────────────────────────────────────
+
+export const RawRequestInputSchema = z.object({
+  language: z.string().describe("Language server to send the request to."),
+  method: z.string().describe("LSP method name (e.g., textDocument/hover)."),
+  params: z.record(z.string(), z.unknown()).optional().describe("LSP request parameters."),
+});
+
+// ── V4: Multi-Workspace Foundation (optional) ───────────────────────────────
+
+export const ListWorkspacesInputSchema = z.object({});
+
+export const WorkspaceStatusInputSchema = z.object({
+  workspacePath: z.string().describe("Absolute path to the workspace to query."),
+});

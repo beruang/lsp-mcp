@@ -69,6 +69,10 @@ class SnapshotStore {
     return this.store.size;
   }
 
+  clear(): void {
+    this.store.clear();
+  }
+
   private enforceMaxEntries(): void {
     const max = 500;
     if (this.store.size > max) {
