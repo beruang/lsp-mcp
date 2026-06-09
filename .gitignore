@@ -1,0 +1,8 @@
+node_modules
+dist
+fixtures/sample-ts/node_modules
+fixtures/sample-py/.venv
+*.log
+.DS_Store
+.agent/
+docs/

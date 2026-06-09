@@ -1,3 +1,0 @@
-{"type":"validation","id":"typecheck","scope":"task","command":"pnpm run typecheck","required":true,"stage":"pre_review","detected_from":"package.json"}
-{"type":"validation","id":"build","scope":"task","command":"pnpm run build","required":true,"stage":"pre_review","detected_from":"package.json"}
-{"type":"validation","id":"test","scope":"task","command":"pnpm run test","required":false,"stage":"pre_review","detected_from":"package.json (not yet present — phase-1 adds it)"}

@@ -1,0 +1,42 @@
+{
+  "name": "mcp-lsp-v1",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "tsx src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint src/ scripts/ --max-warnings 0",
+    "lint:fix": "eslint src/ scripts/ --fix --max-warnings 0",
+    "test": "node --test --import tsx src/mcp/toolErrors.test.ts src/utils/asyncTimeout.test.ts src/safety/paths.test.ts src/config/languageServers.test.ts src/lsp/normalize.test.ts src/lsp/diagnosticsCache.test.ts src/composite/diagnosticsSummary.test.ts src/safety/workspaceEdit.test.ts src/diff/applyTextEdits.test.ts src/composite/inspectSymbol.test.ts",
+    "smoke:phase-2": "tsx scripts/phase-2-smoke.ts",
+    "e2e:phase-4": "tsx scripts/phase-4-e2e.ts",
+    "e2e:phase-5": "tsx scripts/phase-5-e2e.ts",
+    "e2e:phase-6": "tsx scripts/phase-6-e2e.ts",
+    "e2e:phase-7": "tsx scripts/phase-7-e2e.ts",
+    "e2e:phase-8": "tsx scripts/phase-8-e2e.ts",
+    "e2e:phase-9": "tsx scripts/phase-9-e2e.ts",
+    "prepare": "husky"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "vscode-jsonrpc": "^8.2.1",
+    "vscode-languageserver-protocol": "^3.17.5",
+    "vscode-languageserver-types": "^3.17.5",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/diff": "^5.2.3",
+    "@types/node": "^22.10.0",
+    "@typescript-eslint/eslint-plugin": "^8.60.1",
+    "@typescript-eslint/parser": "^8.60.1",
+    "diff": "^5.2.0",
+    "eslint": "^10.4.1",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.0.7",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3"
+  }
+}

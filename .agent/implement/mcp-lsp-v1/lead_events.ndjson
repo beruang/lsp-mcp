@@ -1,4 +1,0 @@
-{"type":"lead_event","kind":"init","timestamp":"2026-06-08T00:00:00Z","message":"Implement session started for mcp-lsp-v1"}
-{"type":"lead_event","kind":"git_initialized","timestamp":"2026-06-08T00:00:00Z","branch":"feat/version-1","remote":"https://github.com/beruang/lsp-mcp.git"}
-{"type":"lead_event","kind":"lsp_servers_detected","timestamp":"2026-06-08T00:00:00Z","typescript-language-server":"missing","pyright-langserver":"missing","note":"Risk R7 mitigation active: LspClientManager.spawn will throw lsp_server_unavailable"}
-{"type":"lead_event","kind":"strategy_decided","timestamp":"2026-06-08T00:00:00Z","strategy":"sequential","max_parallel_agents":1,"reason":"Linear 10-phase dependency chain; no parallel execution possible"}
