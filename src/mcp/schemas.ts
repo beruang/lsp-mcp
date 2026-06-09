@@ -272,3 +272,27 @@ export const UpdateRuntimeConfigInputSchema = z.object({
     }).optional(),
   }).describe("Partial runtime config. Immutable keys (workspacePath) are rejected."),
 });
+
+// ── V4: Server Operations ───────────────────────────────────────────────────
+
+export const ServerStatusInputSchema = z.object({
+  language: z.string().optional().describe("Filter to a specific language. Omit for all."),
+});
+
+export const RestartServerInputSchema = z.object({
+  language: z.string().describe("Language server to restart (e.g., typescript, python)."),
+  reopenDocuments: z.boolean().default(true).describe("Re-open tracked documents after restart."),
+  shutdownTimeoutMs: z.number().int().positive().default(5000).describe("Max wait for shutdown before force kill."),
+});
+
+export const ShutdownServerInputSchema = z.object({
+  language: z.string().describe("Language server to shut down (e.g., typescript, python)."),
+  forceTimeoutMs: z.number().int().positive().default(5000).describe("Max wait for graceful shutdown before force kill."),
+});
+
+export const ListSupportedLanguagesInputSchema = z.object({});
+
+export const GetCapabilitiesInputSchema = z.object({
+  language: z.string().describe("Language to query capabilities for."),
+  startIfNeeded: z.boolean().default(false).describe("Initialize the server if not already running."),
+});

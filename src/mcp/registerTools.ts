@@ -35,6 +35,11 @@ import {
   // V4
   GetConfigInputSchema,
   UpdateRuntimeConfigInputSchema,
+  ServerStatusInputSchema,
+  RestartServerInputSchema,
+  ShutdownServerInputSchema,
+  ListSupportedLanguagesInputSchema,
+  GetCapabilitiesInputSchema,
 } from "./schemas.js";
 import { formatDocument, formatRange } from "../formatting/formatPreview.js";
 import { waitForDiagnostics } from "../diagnostics/waitForDiagnostics.js";
@@ -60,6 +65,9 @@ import { analyzeChangeImpact } from "../semantic/analyzeChangeImpact.js";
 
 // V4 imports
 import { getEffectiveConfig, updateRuntimeConfig } from "../config/runtimeConfig.js";
+import { restartServer } from "../ops/restartServer.js";
+import { shutdownServer } from "../ops/shutdownServer.js";
+import { execFile } from "child_process";
 
 /**
  * Shared context passed to every tool registration.
@@ -2300,9 +2308,6 @@ export function registerAllTools(
             runtime: true,
           },
         };
-        if (!args.includeDefaults) {
-          // Redact defaults — only show what differs
-        }
         return { content: [{ type: "text" as const, text: JSON.stringify(payload, null, 2) }] };
       } catch (err: unknown) {
         return { content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.LSP_REQUEST_FAILED, String(err)), null, 2) }] };
@@ -2324,6 +2329,162 @@ export function registerAllTools(
           rejected: result.rejected,
         };
         return { content: [{ type: "text" as const, text: JSON.stringify(payload, null, 2) }] };
+      } catch (err: unknown) {
+        return { content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.LSP_REQUEST_FAILED, String(err)), null, 2) }] };
+      }
+    }
+  );
+
+  // ── V4: lsp_server_status ─────────────────────────────────────────────────────
+
+  server.tool(
+    "lsp_server_status",
+    "Return runtime status for all configured language servers. Does not start any server.",
+    ServerStatusInputSchema.shape,
+    async (args) => {
+      try {
+        const all = clientManager.getAllStates();
+        const statuses = args.language
+          ? all.filter((s) => s.language === args.language)
+          : all;
+        return { content: [{ type: "text" as const, text: JSON.stringify(statuses, null, 2) }] };
+      } catch (err: unknown) {
+        return { content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.LSP_REQUEST_FAILED, String(err)), null, 2) }] };
+      }
+    }
+  );
+
+  // ── V4: lsp_restart_server ────────────────────────────────────────────────────
+
+  server.tool(
+    "lsp_restart_server",
+    "Restart a language server. Clears stale diagnostics and optionally reopens tracked documents.",
+    RestartServerInputSchema.shape,
+    async (args) => {
+      try {
+        const rootUri = fileToUri(ctx.workspacePath);
+        const result = await restartServer(
+          clientManager,
+          args.language,
+          ctx.workspacePath,
+          rootUri,
+          args.reopenDocuments,
+          args.shutdownTimeoutMs
+        );
+        return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+      } catch (err: unknown) {
+        const code = (err instanceof Error && err.message.includes("rate_limited"))
+          ? ErrorCodes.RESTART_RATE_LIMITED
+          : (err instanceof Error && err.message.includes("not_found"))
+            ? ErrorCodes.SERVER_NOT_FOUND
+            : ErrorCodes.LSP_REQUEST_FAILED;
+        return { content: [{ type: "text" as const, text: JSON.stringify(toolError(code, String(err)), null, 2) }] };
+      }
+    }
+  );
+
+  // ── V4: lsp_shutdown_server ───────────────────────────────────────────────────
+
+  server.tool(
+    "lsp_shutdown_server",
+    "Gracefully shut down a language server. Subsequent code-intelligence calls restart lazily.",
+    ShutdownServerInputSchema.shape,
+    async (args) => {
+      try {
+        const status = await shutdownServer(clientManager, args.language, args.forceTimeoutMs);
+        return { content: [{ type: "text" as const, text: JSON.stringify(status, null, 2) }] };
+      } catch (err: unknown) {
+        const code = (err instanceof Error && err.message.includes("not_found"))
+          ? ErrorCodes.SERVER_NOT_FOUND
+          : ErrorCodes.LSP_REQUEST_FAILED;
+        return { content: [{ type: "text" as const, text: JSON.stringify(toolError(code, String(err)), null, 2) }] };
+      }
+    }
+  );
+
+  // ── V4: lsp_list_supported_languages ──────────────────────────────────────────
+
+  server.tool(
+    "lsp_list_supported_languages",
+    "Return configured languages with extensions, commands, and binary availability. Does not start language servers.",
+    ListSupportedLanguagesInputSchema.shape,
+    async () => {
+      try {
+        const result = await Promise.all(
+          Object.entries(languageServers).map(async ([lang, entry]) => {
+            let binaryAvailable = false;
+            try {
+              await new Promise<void>((resolve, reject) => {
+                execFile("command", ["-v", entry.command], (err, stdout) => {
+                  if (err || stdout.trim() === "") reject(err ?? new Error("not found"));
+                  else resolve();
+                });
+              });
+              binaryAvailable = true;
+            } catch {
+              binaryAvailable = false;
+            }
+            return {
+              language: lang,
+              languageId: entry.languageId,
+              extensions: entry.extensions,
+              command: entry.command,
+              binaryAvailable,
+            };
+          })
+        );
+        return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+      } catch (err: unknown) {
+        return { content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.LSP_REQUEST_FAILED, String(err)), null, 2) }] };
+      }
+    }
+  );
+
+  // ── V4: lsp_get_capabilities ──────────────────────────────────────────────────
+
+  server.tool(
+    "lsp_get_capabilities",
+    "Return normalized LSP capabilities for a language server. Optionally initializes the server.",
+    GetCapabilitiesInputSchema.shape,
+    async (args) => {
+      try {
+        if (!args.startIfNeeded) {
+          const client = clientManager.getClient(args.language);
+          if (!client) {
+            return {
+              content: [{
+                type: "text" as const,
+                text: JSON.stringify({ initialized: false, language: args.language }, null, 2),
+              }],
+            };
+          }
+          return {
+            content: [{
+              type: "text" as const,
+              text: JSON.stringify({ initialized: true, capabilities: client.getCapabilities() }, null, 2),
+            }],
+          };
+        }
+
+        const rootUri = fileToUri(ctx.workspacePath);
+        const client = await clientManager.getClientForLanguage(args.language, {
+          workspacePath: ctx.workspacePath,
+          rootUri,
+        });
+        if (!client) {
+          return {
+            content: [{
+              type: "text" as const,
+              text: JSON.stringify({ initialized: false, language: args.language, error: "unsupported_language" }, null, 2),
+            }],
+          };
+        }
+        return {
+          content: [{
+            type: "text" as const,
+            text: JSON.stringify({ initialized: true, capabilities: client.getCapabilities() }, null, 2),
+          }],
+        };
       } catch (err: unknown) {
         return { content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.LSP_REQUEST_FAILED, String(err)), null, 2) }] };
       }
