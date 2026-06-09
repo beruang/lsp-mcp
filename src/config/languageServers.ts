@@ -18,6 +18,18 @@ export const languageServers: Record<string, LanguageServerEntry> = {
     args: ["--stdio"],
     languageId: "python",
   },
+  go: {
+    extensions: [".go"],
+    command: "gopls",
+    args: [],
+    languageId: "go",
+  },
+  rust: {
+    extensions: [".rs"],
+    command: "rust-analyzer",
+    args: [],
+    languageId: "rust",
+  },
 };
 
 export function routeLanguage(ext: string): string | null {

@@ -14,6 +14,7 @@
     "test:safety": "node --test --import tsx src/safety/v2-safety.test.ts",
     "test:v3": "node --test --import tsx src/mcp/toolErrors.v3.test.ts src/safety/limits.test.ts src/safety/v3-decoupling.test.ts src/lsp/capabilities.test.ts src/hierarchy/cache.test.ts src/semantic/riskHeuristics.test.ts src/semantic/explainDiagnostics.test.ts",
     "verify:decoupling": "node --test --import tsx src/safety/v3-decoupling.test.ts",
+    "test:integration:v3": "tsx scripts/v3-integration.ts",
     "smoke:phase-2": "tsx scripts/phase-2-smoke.ts",
     "e2e:phase-4": "tsx scripts/phase-4-e2e.ts",
     "e2e:phase-5": "tsx scripts/phase-5-e2e.ts",
