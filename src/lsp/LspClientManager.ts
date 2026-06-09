@@ -34,13 +34,15 @@ export class LspClientManager {
       language: lang,
     }) as Promise<LspClient>;
 
-    // Track resolved client
+    // Track resolved client; clear on failure so retries can work
     promise.then(
       (client) => {
         if (client) this.clients.set(lang, client);
       },
       () => {
-        // Spawn failed — don't cache in clients
+        // Spawn failed — remove from cache so retry works
+        this.clientPromises.delete(lang);
+        this.clients.delete(lang);
       }
     );
 

@@ -1,6 +1,7 @@
 import type { LspClientManager } from "../lsp/LspClientManager.js";
 import type { LspServerRuntimeStatus } from "../lsp/LspState.js";
 import { languageServers } from "../config/languageServers.js";
+import { v4DocumentStore } from "../documents/documentStore.js";
 
 const RESTART_WINDOW_MS = 60_000;
 const MAX_RESTARTS_PER_WINDOW = 3;
@@ -45,19 +46,30 @@ export async function restartServer(
 
   recordRestart(language);
 
-  // Shutdown existing client if running
+  // Gather documents to reopen before killing
+  const docsToReopen = reopenDocuments
+    ? v4DocumentStore.listByLanguage(language).map((d) => ({ filePath: d.filePath, languageId: d.languageId }))
+    : [];
+
+  // Kill existing client
   const existing = manager.getClient(language);
   if (existing) {
-    try {
-      const shutdownPromise = existing.shutdown();
-      const timeout = new Promise<void>((_, reject) =>
-        setTimeout(() => reject(new Error("shutdown_timeout")), shutdownTimeoutMs)
-      );
-      await Promise.race([shutdownPromise, timeout]);
-    } catch {
-      // Kill forced — remove from cache so we can restart
+    const currentState = existing.state.state as string;
+    if (currentState === "crashed" || currentState === "failed" || currentState === "stopped") {
+      // Skip graceful shutdown for crashed/failed/stopped processes
+      manager.removeClient(language);
+    } else {
+      try {
+        const shutdownPromise = existing.shutdown();
+        const timeout = new Promise<void>((_, reject) =>
+          setTimeout(() => reject(new Error("shutdown_timeout")), shutdownTimeoutMs)
+        );
+        await Promise.race([shutdownPromise, timeout]);
+      } catch {
+        // Force kill
+      }
+      manager.removeClient(language);
     }
-    manager.removeClient(language);
   }
 
   // Spawn new client
@@ -67,9 +79,21 @@ export async function restartServer(
   }
 
   // Reopen documents
-  const reopenedDocuments = 0;
-  if (reopenDocuments) {
-    // Document store integration will come in Phase 4
+  let reopenedDocuments = 0;
+  for (const doc of docsToReopen) {
+    try {
+      client.notify("textDocument/didOpen", {
+        textDocument: {
+          uri: doc.filePath,
+          languageId: doc.languageId,
+          version: 1,
+          text: "", // LSP will get text from subsequent syncs
+        },
+      });
+      reopenedDocuments++;
+    } catch {
+      // Best effort
+    }
   }
 
   return {
