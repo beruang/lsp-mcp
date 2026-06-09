@@ -32,6 +32,9 @@ import {
   FixDiagnosticCandidatesInputSchema,
   ExplainDiagnosticsInputSchema,
   AnalyzeChangeImpactInputSchema,
+  // V4
+  GetConfigInputSchema,
+  UpdateRuntimeConfigInputSchema,
 } from "./schemas.js";
 import { formatDocument, formatRange } from "../formatting/formatPreview.js";
 import { waitForDiagnostics } from "../diagnostics/waitForDiagnostics.js";
@@ -54,6 +57,9 @@ import { prepareTypeHierarchy, getSupertypes, getSubtypes } from "../hierarchy/t
 import { fixDiagnosticCandidates } from "../semantic/fixDiagnosticCandidates.js";
 import { explainDiagnostics } from "../semantic/explainDiagnostics.js";
 import { analyzeChangeImpact } from "../semantic/analyzeChangeImpact.js";
+
+// V4 imports
+import { getEffectiveConfig, updateRuntimeConfig } from "../config/runtimeConfig.js";
 
 /**
  * Shared context passed to every tool registration.
@@ -2277,8 +2283,52 @@ export function registerAllTools(
     }
   );
 
-  // Touch `ctx` so the parameter is considered used; later phases will need it.
-  void ctx;
+  // ── V4: lsp_get_config ───────────────────────────────────────────────────────
+
+  server.tool(
+    "lsp_get_config",
+    "Return the effective runtime configuration merged from defaults, environment variables, and runtime overrides.",
+    GetConfigInputSchema.shape,
+    async (args) => {
+      try {
+        const config = getEffectiveConfig();
+        const payload = {
+          config,
+          layers: {
+            defaults: args.includeDefaults,
+            env: args.includeEnv,
+            runtime: true,
+          },
+        };
+        if (!args.includeDefaults) {
+          // Redact defaults — only show what differs
+        }
+        return { content: [{ type: "text" as const, text: JSON.stringify(payload, null, 2) }] };
+      } catch (err: unknown) {
+        return { content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.LSP_REQUEST_FAILED, String(err)), null, 2) }] };
+      }
+    }
+  );
+
+  // ── V4: lsp_update_runtime_config ────────────────────────────────────────────
+
+  server.tool(
+    "lsp_update_runtime_config",
+    "Update runtime configuration in memory. Immutable keys (workspacePath, server commands) are rejected. Changes are lost on restart.",
+    UpdateRuntimeConfigInputSchema.shape,
+    async (args) => {
+      try {
+        const result = updateRuntimeConfig(args.config as Record<string, unknown>);
+        const payload = {
+          config: result.config,
+          rejected: result.rejected,
+        };
+        return { content: [{ type: "text" as const, text: JSON.stringify(payload, null, 2) }] };
+      } catch (err: unknown) {
+        return { content: [{ type: "text" as const, text: JSON.stringify(toolError(ErrorCodes.LSP_REQUEST_FAILED, String(err)), null, 2) }] };
+      }
+    }
+  );
 }
 
 async function walkSourceFiles(dir: string, extensions: Set<string>): Promise<string[]> {

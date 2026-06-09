@@ -226,3 +226,49 @@ export const ExplainDiagnosticsInputSchema = z.object({
   maxDiagnostics: z.number().int().positive().default(20).describe("Maximum root cause candidates."),
   includeFixCandidates: z.boolean().default(false).describe("Include fix candidates for top diagnostics."),
 });
+
+// ── V4: Runtime Config ──────────────────────────────────────────────────────
+
+export const GetConfigInputSchema = z.object({
+  includeDefaults: z.boolean().default(true).describe("Include default config values."),
+  includeEnv: z.boolean().default(true).describe("Include environment variable overrides."),
+});
+
+export const UpdateRuntimeConfigInputSchema = z.object({
+  config: z.object({
+    limits: z.object({
+      maxReferences: z.number().int().positive().optional(),
+      maxWorkspaceSymbols: z.number().int().positive().optional(),
+      maxDiagnostics: z.number().int().positive().optional(),
+      maxCompletionItems: z.number().int().positive().optional(),
+      maxChangedFiles: z.number().int().positive().optional(),
+      maxEdits: z.number().int().positive().optional(),
+      maxContextCharacters: z.number().int().positive().optional(),
+    }).optional(),
+    timeoutsMs: z.object({
+      hover: z.number().int().positive().optional(),
+      definition: z.number().int().positive().optional(),
+      references: z.number().int().positive().optional(),
+      diagnostics: z.number().int().positive().optional(),
+      renamePreview: z.number().int().positive().optional(),
+      codeActions: z.number().int().positive().optional(),
+      formatting: z.number().int().positive().optional(),
+      callHierarchy: z.number().int().positive().optional(),
+      typeHierarchy: z.number().int().positive().optional(),
+      completion: z.number().int().positive().optional(),
+      compositeAnalysis: z.number().int().positive().optional(),
+    }).optional(),
+    caches: z.object({
+      codeActionTtlMs: z.number().int().positive().optional(),
+      diagnosticSnapshotTtlMs: z.number().int().positive().optional(),
+      callHierarchyTtlMs: z.number().int().positive().optional(),
+      typeHierarchyTtlMs: z.number().int().positive().optional(),
+      requestLogMaxEntries: z.number().int().positive().optional(),
+    }).optional(),
+    debug: z.object({
+      rawRequestEnabled: z.boolean().optional(),
+      includeRawLspResponses: z.boolean().optional(),
+      verboseLogging: z.boolean().optional(),
+    }).optional(),
+  }).describe("Partial runtime config. Immutable keys (workspacePath) are rejected."),
+});

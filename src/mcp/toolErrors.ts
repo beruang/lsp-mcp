@@ -63,6 +63,17 @@ export const ErrorCodes = {
   TYPE_HIERARCHY_ITEM_EXPIRED: "type_hierarchy_item_expired",
   CHANGE_IMPACT_ANALYSIS_INCOMPLETE: "change_impact_analysis_incomplete",
   DIAGNOSTIC_NOT_FOUND: "diagnostic_not_found",
+  // V4
+  INVALID_CONFIG_KEY: "invalid_config_key",
+  INVALID_CONFIG_VALUE: "invalid_config_value",
+  IMMUTABLE_CONFIG_KEY: "immutable_config_key",
+  SERVER_NOT_FOUND: "server_not_found",
+  RESTART_RATE_LIMITED: "restart_rate_limited",
+  SERVER_ALREADY_STOPPED: "server_already_stopped",
+  SERVER_NOT_RUNNING: "server_not_running",
+  RAW_REQUEST_DISABLED: "raw_request_disabled",
+  METHOD_DENIED: "method_denied",
+  DOCUMENT_NOT_FOUND: "document_not_found",
 } as const;
 
 /**
